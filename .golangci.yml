@@ -1,0 +1,40 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - revive
+    - unconvert
+    - unparam
+  settings:
+    gosec:
+      excludes:
+        # G115 (int/uint conversion overflow) fires throughout internal/pty on
+        # cols/rows uint16 conversions bounded well under uint16's range by
+        # session.New's own clamping — not a real overflow risk.
+        - G115
+  exclusions:
+    paths:
+      # Vendored github.com/cfoust/cy/pkg/emu (see internal/vt/emu/NOTICE.md)
+      # — third-party code kept as close to upstream as possible so future
+      # syncs stay low-diff; not worth restyling to our conventions.
+      - internal/vt/emu
+    rules:
+      # Low-level Windows syscall glue is necessarily unsafe/dense; treat
+      # it the same way termizard excludes its own core/pty package.
+      - path: internal/pty/(conpty_windows|syscall_windows|env_windows)\.go
+        linters: [gosec, revive]
+      - path: _test\.go
+        linters: [gosec, unparam]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

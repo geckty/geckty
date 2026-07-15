@@ -1,0 +1,51 @@
+version: "3"
+
+vars:
+  APP_NAME: "geckty"
+  BIN_DIR: "bin"
+  MAIN_PACKAGE: "./cmd/geckty"
+  # Target OS for package/run-bundle. Defaults to the host OS; override
+  # with GOOS=windows etc. (task package GOOS=windows).
+  GOOS: '{{.GOOS | default OS}}'
+
+includes:
+  common: ./build/Taskfile.yml
+  darwin: ./build/darwin/Taskfile.yml
+  linux: ./build/linux/Taskfile.yml
+  windows: ./build/windows/Taskfile.yml
+
+tasks:
+  package:
+    desc: Packages a release build for the current (or GOOS=) platform
+    cmds:
+      - task: "{{.GOOS}}:package"
+
+  build:
+    desc: Build the geckty binary
+    cmds:
+      - go build -trimpath -ldflags="-w -s" -o geckty ./cmd/geckty
+
+  run:
+    desc: Build and run geckty
+    cmds:
+      - go run ./cmd/geckty
+
+  test:
+    desc: Run the test suite with the race detector
+    cmds:
+      - go test -race -parallel 4 -coverprofile=coverage.txt -covermode=atomic ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run --timeout=5m
+
+  fmt:
+    desc: Format all Go source
+    cmds:
+      - gofmt -w .
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -f geckty geckty.exe coverage.txt

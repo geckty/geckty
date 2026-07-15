@@ -1,0 +1,208 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.26'
+
+jobs:
+  build-macos-arm64:
+    name: macOS arm64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install task runner
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+
+      - name: Sync release version
+        run: bash scripts/sync-release-version.sh
+        env:
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+
+      - name: Build DMG installer
+        run: task darwin:package ARCH=arm64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geckty-macos-arm64
+          path: |
+            bin/geckty-macos-arm64.dmg
+
+  build-macos-amd64:
+    name: macOS amd64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install task runner
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+
+      - name: Sync release version
+        run: bash scripts/sync-release-version.sh
+        env:
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+
+      - name: Build DMG installer
+        run: task darwin:package ARCH=amd64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geckty-macos-amd64
+          path: |
+            bin/geckty-macos-amd64.dmg
+
+  # amd64-only: gio needs cgo (D3D11/ANGLE), and cross-compiling cgo to a
+  # *different* architecture than the build host needs a matching C
+  # cross-toolchain — unlike macOS (Xcode's clang natively targets both
+  # arm64 and x86_64 from either host), windows-latest's default mingw
+  # toolchain doesn't ship one for arm64 out of the box, and this project
+  # has no way to verify one it configured actually works (no Windows ARM
+  # CI access, no local Windows host at all — see the project plan's M10
+  # write-up). Dropped rather than shipped as an unverified guess; revisit
+  # once someone can actually test a Windows arm64 build.
+  build-windows:
+    name: Windows amd64
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [amd64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          $nsisCandidates = @(
+            "${env:ProgramFiles(x86)}\NSIS",
+            "$env:ProgramFiles\NSIS"
+          )
+          $nsisDir = $null
+          foreach ($dir in $nsisCandidates) {
+            if (Test-Path "$dir\makensis.exe") {
+              $nsisDir = $dir
+              break
+            }
+          }
+          if (-not $nsisDir) {
+            throw "makensis.exe not found after NSIS install"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $nsisDir
+          & "$nsisDir\makensis.exe" /VERSION
+
+      - name: Install task runner
+        shell: bash
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+
+      - name: Sync release version
+        shell: bash
+        run: bash scripts/sync-release-version.sh
+        env:
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: task windows:package ARCH=${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geckty-windows-${{ matrix.arch }}
+          path: bin/geckty-${{ matrix.arch }}-installer.exe
+
+  # amd64-only for the same cgo cross-toolchain reason as build-windows
+  # above — ubuntu-latest doesn't ship an aarch64 cross-compiler by
+  # default, and gio needs cgo (X11/EGL) on Linux too.
+  build-linux:
+    name: Linux amd64
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install gio build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxkbcommon-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev
+
+      - name: Install nfpm
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+
+      - name: Install task runner
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+
+      - name: Sync release version
+        run: bash scripts/sync-release-version.sh
+        env:
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+
+      - name: Build .deb package
+        run: task linux:package ARCH=${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geckty-linux-${{ matrix.arch }}
+          path: bin/*.deb
+
+  publish:
+    name: Publish release assets
+    needs:
+      - build-macos-arm64
+      - build-macos-amd64
+      - build-windows
+      - build-linux
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.release.tag_name != ''
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List release artifacts
+        run: find artifacts -type f | sort
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: artifacts/**/*
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

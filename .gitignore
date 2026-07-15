@@ -1,0 +1,6 @@
+/geckty
+/dist/
+/bin/
+*.exe
+coverage.txt
+.idea/

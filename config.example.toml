@@ -1,0 +1,100 @@
+# geckty configuration.
+#
+# Copy this file to $XDG_CONFIG_HOME/geckty/config.toml (or
+# ~/.config/geckty/config.toml if XDG_CONFIG_HOME is unset) and edit it.
+# Any field or section left out falls back to geckty's built-in default.
+
+[window]
+width = 1000
+height = 650
+
+[font]
+family = "monospace"
+size = 13
+
+[colors]
+# preset, if set, replaces foreground/background/ansi below entirely with
+# a named built-in scheme rather than merging with them — pick one or the
+# other, not both.
+#
+# Built-in presets:
+#   "glass" — geckty's standard / default theme. Approximates macOS
+#             Terminal.app's dark "Pro" palette, paired with the tab bar's
+#             own software glass capsules (see internal/ui/chrome/glass.go).
+#             Colors only: gio has no window-transparency/blur API, so this
+#             can't reproduce Terminal.app's translucent chrome via real
+#             compositor blur.
+preset = "glass"
+
+# Leave the fields below commented when using a preset. Uncomment (and
+# clear preset) to customize colors by hand — values match Terminal.app
+# "Pro" (text/selection verified from the system profile).
+# foreground = "#f4f4f4"
+# background = "#000000"
+# selection = "#525252"
+# ansi = [
+#   "#000000", "#c23621", "#25a250", "#caca33",
+#   "#492ee1", "#d338d3", "#33bbc8", "#cbcccc",
+#   "#818383", "#fc391f", "#31e722", "#eaec23",
+#   "#5833ff", "#f935f8", "#14f0f0", "#e9ebeb",
+# ]
+
+[shell]
+# Leave unset to use $SHELL (POSIX) or the best available PowerShell/cmd
+# (Windows).
+# command = ["/bin/zsh", "-l"]
+
+[selection]
+# Extra characters (beyond letters, digits, and "_", always included)
+# treated as part of a word for double-click word selection. The default
+# selects only "_"-joined identifiers; uncommenting a broader set below
+# lets a double-click grab a whole kebab-case-name.ext or path in one go.
+# Double-click word characters beyond letters/digits/"_" (Terminal.app-
+# style filenames like config.example.toml).
+word_chars = "._-"
+
+# Defining any [[keybindings]] entries replaces ALL of the built-in
+# defaults, not just the ones listed — copy the defaults below and edit
+# them rather than adding a single override.
+#
+# key: a gio key.Name value ("A".."Z", "0".."9", "Tab", "[", "]", ...)
+# mods: any of "ctrl", "shift", "alt", "cmd" (cmd is macOS-only)
+# action: "new_tab", "close_tab", "next_tab", "prev_tab", "copy", "paste"
+#
+# Defaults avoid plain Ctrl+T/Ctrl+W/Ctrl+C/Ctrl+V: those are shell
+# readline/job-control bindings (transpose-char, delete-word-backward,
+# SIGINT, literal-next) that must reach the shell untouched. macOS default
+# (Cmd-based, matches Terminal.app/iTerm2):
+#
+# [[keybindings]]
+# key = "T"
+# mods = ["cmd"]
+# action = "new_tab"
+#
+# [[keybindings]]
+# key = "W"
+# mods = ["cmd"]
+# action = "close_tab"
+#
+# [[keybindings]]
+# key = "]"
+# mods = ["cmd", "shift"]
+# action = "next_tab"
+#
+# [[keybindings]]
+# key = "["
+# mods = ["cmd", "shift"]
+# action = "prev_tab"
+#
+# [[keybindings]]
+# key = "C"
+# mods = ["cmd"]
+# action = "copy"
+#
+# [[keybindings]]
+# key = "V"
+# mods = ["cmd"]
+# action = "paste"
+#
+# Other platforms default to Ctrl+Shift+T/W/C/V and Ctrl+(Shift+)Tab
+# instead.
