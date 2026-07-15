@@ -8,7 +8,7 @@ Thank you for your interest in contributing to geckty!
 
 - **Go 1.26+**
 - **golangci-lint** for code quality checks
-- Linux: X11 or Wayland development headers (`libx11-dev`, `libxkbcommon-dev`, `libwayland-dev`, `libgles2-mesa-dev`) — gio's GPU backend needs cgo on every platform, unlike a typical pure-Go build
+- Linux: X11/Wayland/Vulkan headers (`pkg-config`, `libx11-dev`, `libxkbcommon-dev`, `libwayland-dev`, `libgles2-mesa-dev`, `libegl1-mesa-dev`, `libvulkan-dev`) — gio's GPU backend needs cgo
 - Windows: ConPTY (Windows 10 1809+ / Windows 11) for the shell session
 
 ---

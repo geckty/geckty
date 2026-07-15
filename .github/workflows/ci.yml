@@ -24,11 +24,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxkbcommon-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev
-      # Deliberately no CGO_ENABLED=0: gio's GPU backends require cgo on
-      # every platform (X11/Wayland+EGL/GLX on Linux, Metal on macOS,
-      # D3D11/ANGLE on Windows). See the project plan's "CI/release infra"
-      # section for why this differs from a typical pure-Go build.
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
+      # gio GPU backends need cgo (X11/Wayland+EGL/Vulkan, Metal, D3D11).
       - run: go build -trimpath -ldflags="-w -s" ./...
 
   test:
@@ -45,7 +42,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxkbcommon-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
       # go vet runs on every platform now — previously Linux-only, which
       # meant internal/pty's Windows-only files (conpty_windows.go et al.)
       # had never actually been vetted in this project's history despite
@@ -80,7 +77,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxkbcommon-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
       - uses: golangci/golangci-lint-action@v8
         with:
           args: --timeout=5m
@@ -124,6 +121,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - run: govulncheck ./...
 
@@ -136,13 +136,8 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxkbcommon-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev xvfb weston
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev xvfb weston
       - run: go build -o geckty ./cmd/geckty
-      # geckty must at least start under both windowing systems it targets
-      # on Linux — the Wayland-vs-X11 focus/event-routing bug class
-      # documented in the project plan ("Cross-platform launch &
-      # windowing") only reproduces under a real compositor, never under
-      # Xvfb/XWayland, so both are exercised here rather than just one.
       - name: Smoke test under Xvfb (X11)
         run: |
           xvfb-run --auto-servernum timeout 5 ./geckty || [ $? -eq 124 ]
