@@ -1,0 +1,33 @@
+name: "geckty"
+arch: ${GOARCH}
+platform: "linux"
+version: "0.0.0"
+section: "x11"
+priority: "extra"
+maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
+description: "GPU-accelerated terminal emulator"
+vendor: "geckty"
+homepage: "https://github.com/geckty/geckty"
+license: "MIT"
+release: "1"
+
+contents:
+  - src: "./bin/geckty"
+    dst: "/usr/local/bin/geckty"
+  - src: "./build/linux/icon-256.png"
+    dst: "/usr/share/icons/hicolor/256x256/apps/geckty.png"
+  - src: "./build/linux/geckty.desktop"
+    dst: "/usr/share/applications/geckty.desktop"
+
+# Runtime shared libraries gio's GL/EGL backend needs — the runtime (non
+# -dev) counterparts of what ci.yml installs to *build* geckty (see that
+# workflow's "Install gio build dependencies" step). Debian/Ubuntu package
+# names; not independently verified against a real apt install in this
+# environment — see the project plan's M10 write-up.
+depends:
+  - libx11-6
+  - libxkbcommon0
+  - libwayland-client0
+  - libwayland-egl1
+  - libgles2
+  - libegl1

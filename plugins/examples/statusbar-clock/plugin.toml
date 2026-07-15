@@ -1,0 +1,4 @@
+name = "statusbar-clock"
+version = "0.1.0"
+entry = "entry.wasm"
+permissions = ["log", "statusbar"]

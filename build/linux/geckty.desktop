@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=geckty
+Exec=geckty
+Icon=geckty
+Comment=GPU-accelerated terminal emulator
+Categories=System;TerminalEmulator;
+Terminal=false
