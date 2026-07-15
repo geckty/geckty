@@ -38,9 +38,9 @@ func TestFilterAndCompleteInteractiveArgsAddsModeFlags(t *testing.T) {
 		command []string
 		want    []string
 	}{
-		{"pwsh gets NoLogo/NoExit", []string{`C:\pwsh.exe`}, []string{`C:\pwsh.exe`, "-NoLogo", "-NoExit"}},
-		{"powershell.exe recognized case-insensitively", []string{`C:\PowerShell.EXE`}, []string{`C:\PowerShell.EXE`, "-NoLogo", "-NoExit"}},
-		{"cmd gets /K", []string{`C:\Windows\System32\cmd.exe`}, []string{`C:\Windows\System32\cmd.exe`, "/K"}},
+		{"pwsh gets NoLogo/NoExit/UTF-8", []string{`C:\pwsh.exe`}, []string{`C:\pwsh.exe`, "-NoLogo", "-NoExit", "-Command", windowsUTF8Init}},
+		{"powershell.exe recognized case-insensitively", []string{`C:\PowerShell.EXE`}, []string{`C:\PowerShell.EXE`, "-NoLogo", "-NoExit", "-Command", windowsUTF8Init}},
+		{"cmd gets /K + UTF-8 chcp", []string{`C:\Windows\System32\cmd.exe`}, []string{`C:\Windows\System32\cmd.exe`, "/K", "chcp", "65001"}},
 		{"unrecognized shell gets nothing added", []string{`C:\bash.exe`}, []string{`C:\bash.exe`}},
 		{"empty command is untouched", nil, nil},
 	}

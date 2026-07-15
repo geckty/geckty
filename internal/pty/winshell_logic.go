@@ -64,14 +64,18 @@ func windowsBaseName(path string) string {
 	return slashed
 }
 
+// windowsUTF8Init forces UTF-8 console I/O so ConPTY bytes match the VT
+// parser (OEM code pages otherwise garble Cyrillic and prompt glyphs).
+const windowsUTF8Init = "[Console]::InputEncoding=[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); chcp 65001 > $null; $Host.UI.RawUI.WindowTitle=(Get-Location).Path"
+
 // windowsInteractiveModeFlags maps a shell executable's lowercase base
 // name to the flags that keep it open and interactive when the caller
 // didn't already specify one. Shells not listed here get no flags added —
 // filterAndCompleteInteractiveArgs still strips POSIX-only flags for them.
 var windowsInteractiveModeFlags = map[string][]string{
-	"pwsh.exe":       {"-NoLogo", "-NoExit"},
-	"powershell.exe": {"-NoLogo", "-NoExit"},
-	"cmd.exe":        {"/K"},
+	"pwsh.exe":       {"-NoLogo", "-NoExit", "-Command", windowsUTF8Init},
+	"powershell.exe": {"-NoLogo", "-NoExit", "-Command", windowsUTF8Init},
+	"cmd.exe":        {"/K", "chcp", "65001"},
 }
 
 // posixOnlyShellFlags are stripped from a command line before launching on

@@ -15,15 +15,16 @@ import (
 )
 
 // MonospaceTypeface is the font.Font.Typeface every fixed-width label uses.
-// Platform default: Menlo (macOS), Consolas (Windows — Menlo is absent and
-// a bad fallback widens cells so ConPTY reports fewer columns and
-// PowerShell mid-truncates paths), monospace elsewhere.
+// Platform default: Menlo (macOS); Cascadia Mono then Consolas (Windows —
+// proportional fallback widens cells so ConPTY gets too few columns and
+// PowerShell abbreviates paths with "…"); monospace elsewhere.
 var MonospaceTypeface = font.Typeface(defaultMonospaceFamily())
 
 func defaultMonospaceFamily() string {
 	switch runtime.GOOS {
 	case "windows":
-		return "Consolas"
+		// CSS-style list: first installed face wins in Gio's system shaper.
+		return "Cascadia Mono, Cascadia Code, Consolas, monospace"
 	case "darwin":
 		return "Menlo"
 	default:

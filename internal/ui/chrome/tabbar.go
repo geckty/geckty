@@ -5,6 +5,7 @@ package chrome
 import (
 	"fmt"
 	"image"
+	"strings"
 
 	"gioui.org/font"
 	"gioui.org/layout"
@@ -518,10 +519,34 @@ func tabTitle(t session.Tab) string {
 	t.Session.Term.RLock()
 	title := t.Session.Term.Title()
 	t.Session.Term.RUnlock()
-	if title == "" {
-		return fmt.Sprintf("Tab %d", t.ID+1)
+	// Windows often leaves the console title as the shell .exe path; prefer
+	// the spawn directory (cwd) so the tab shows a real path, not powershell.exe.
+	if title == "" || looksLikeShellExeTitle(title) {
+		if dir := strings.TrimSpace(t.Session.Dir); dir != "" {
+			return dir
+		}
+		if title == "" {
+			return fmt.Sprintf("Tab %d", t.ID+1)
+		}
 	}
 	return title
+}
+
+func looksLikeShellExeTitle(title string) bool {
+	s := strings.ReplaceAll(title, `/`, `\`)
+	base := s
+	if i := strings.LastIndex(s, `\`); i >= 0 {
+		base = s[i+1:]
+	}
+	base = strings.ToLower(base)
+	switch base {
+	case "powershell.exe", "pwsh.exe", "cmd.exe", "windowsterminal.exe":
+		return true
+	}
+	low := strings.ToLower(s)
+	return strings.HasSuffix(base, ".exe") &&
+		(strings.Contains(low, `\windows\system32\`) ||
+			strings.Contains(low, `\powershell\`))
 }
 
 // truncateTitle keeps the end of long titles (paths) so the leaf segment

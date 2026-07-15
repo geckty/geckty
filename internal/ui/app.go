@@ -18,6 +18,7 @@ import (
 	"gioui.org/app"
 	"gioui.org/f32"
 	"gioui.org/font"
+	"gioui.org/font/gofont"
 	"gioui.org/io/clipboard"
 	"gioui.org/io/event"
 	"gioui.org/io/key"
@@ -117,7 +118,9 @@ func Run(cfg *config.Config) error {
 	theme.SetMonospaceFamily(cfg.Font.Family)
 
 	th := material.NewTheme()
-	shaper := text.NewShaper()
+	// System fonts stay enabled; gofont is a last-resort collection so a
+	// missing Cascadia/Consolas never falls into a proportional face.
+	shaper := text.NewShaper(text.WithCollection(gofont.Collection()))
 	th.Shaper = shaper
 
 	painter := &grid.Painter{
@@ -132,7 +135,7 @@ func Run(cfg *config.Config) error {
 
 	t := new(tag)
 	requestedFocus := false
-	cellWidthMeasured := false
+	var lastPxPerEm int
 	windowFocused := true
 	var scrollAccumPx float32
 	var tabDrag tabDragState
@@ -291,15 +294,13 @@ func Run(cfg *config.Config) error {
 				}
 			}
 
-			// Cell width depends on gtx.Metric (DPI scaling), only
-			// available inside a frame — measured once and cached
-			// rather than re-shaped every frame. It won't track a
-			// mid-session DPI change (e.g. dragging the window to a
-			// monitor with different scaling); revisit if that
-			// turns out to matter in practice.
-			if !cellWidthMeasured {
+			// Cell width depends on DPI (PxPerEm). Remeasure when scaling
+			// changes so Windows 125%/150% displays don't keep a stale width
+			// (too-wide cells → too few ConPTY columns → path "…").
+			pxPerEm := gtx.Sp(painter.FontSize)
+			if painter.CellWidth <= 0 || pxPerEm != lastPxPerEm {
 				painter.CellWidth = measureCellWidth(gtx, shaper, painter.FontSize)
-				cellWidthMeasured = true
+				lastPxPerEm = pxPerEm
 			}
 
 			gridSizePx := image.Pt(e.Size.X-2*padPx, e.Size.Y-chromeHeightPx-2*padPx)
@@ -546,24 +547,22 @@ func gridPlacements(sess *session.Session) []grid.Placement {
 	return out
 }
 
-// measureCellWidth shapes a single "M" glyph to derive the monospace
-// font's fixed advance width in device pixels. Round (not Ceil): Ceil
-// inflated cells on Windows DPI scaling so ConPTY got too few columns and
-// PowerShell abbreviated paths with "...". Per-cell painting tolerates
-// Round without the old mid-glyph clip.
+// measureCellWidth shapes a representative monospace glyph to derive the
+// fixed advance in device pixels. Prefer Floor over Ceil — Ceil inflated
+// Windows DPI cells so ConPTY got too few columns and PowerShell used "…".
 func measureCellWidth(gtx layout.Context, shaper *text.Shaper, fontSize unit.Sp) int {
 	shaper.LayoutString(text.Parameters{
 		Font:    font.Font{Typeface: theme.MonospaceTypeface},
 		PxPerEm: fixed.I(gtx.Sp(fontSize)),
 	}, "M")
 	if g, ok := shaper.NextGlyph(); ok {
-		w := g.Advance.Round()
+		w := g.Advance.Floor()
 		if w < 1 {
 			return 1
 		}
 		return w
 	}
-	return gtx.Sp(fontSize) // fallback if shaping ever yields no glyph
+	return gtx.Sp(fontSize)
 }
 
 // tabDragThresholdDp is how far the pointer must move from the press

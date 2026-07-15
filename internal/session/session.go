@@ -35,6 +35,8 @@ type Config struct {
 type Session struct {
 	PTY  pty.PTY
 	Term *vt.Terminal
+	// Dir is the initial working directory at spawn (may be empty).
+	Dir string
 
 	writeMu     sync.Mutex
 	onDirty     func()
@@ -70,7 +72,9 @@ func New(cfg Config) (*Session, error) {
 		return nil, err
 	}
 
-	return newWithPTY(p, cols, rows, cfg.OnDirty, cfg.OnExit), nil
+	s := newWithPTY(p, cols, rows, cfg.OnDirty, cfg.OnExit)
+	s.Dir = cfg.Dir
+	return s, nil
 }
 
 // newWithPTY builds a Session around an already-open PTY, letting tests

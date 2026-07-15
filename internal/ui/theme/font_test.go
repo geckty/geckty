@@ -2,6 +2,7 @@ package theme
 
 import (
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -9,8 +10,8 @@ func TestDefaultMonospaceFamily(t *testing.T) {
 	got := defaultMonospaceFamily()
 	switch runtime.GOOS {
 	case "windows":
-		if got != "Consolas" {
-			t.Fatalf("windows default = %q, want Consolas", got)
+		if !strings.Contains(got, "Consolas") || !strings.Contains(got, "Cascadia") {
+			t.Fatalf("windows default = %q, want Cascadia…/Consolas list", got)
 		}
 	case "darwin":
 		if got != "Menlo" {
