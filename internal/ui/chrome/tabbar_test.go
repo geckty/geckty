@@ -233,41 +233,6 @@ func TestVisualTabSlot(t *testing.T) {
 	}
 }
 
-func TestTruncateTitleKeepsEnd(t *testing.T) {
-	short := "Users/foo"
-	if got := truncateTitle(short); got != short {
-		t.Fatalf("short = %q, want unchanged", got)
-	}
-	long := `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe`
-	got := truncateTitle(long)
-	if r := []rune(got); len(r) == 0 || r[0] != '…' {
-		t.Fatalf("got %q, want leading ellipsis", got)
-	}
-	if !hasSuffixRunes(got, "powershell.exe") {
-		t.Fatalf("got %q, want end kept (powershell.exe)", got)
-	}
-	if hasPrefixASCII(got, `C:\WINDOWS`) {
-		t.Fatalf("got %q, should not keep path start", got)
-	}
-}
-
-func hasSuffixRunes(s, suffix string) bool {
-	sr, zr := []rune(s), []rune(suffix)
-	if len(sr) < len(zr) {
-		return false
-	}
-	for i := range zr {
-		if sr[len(sr)-len(zr)+i] != zr[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func hasPrefixASCII(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
-}
-
 func TestDropIndexByOverlap(t *testing.T) {
 	const tabW, num, from = 100, 4, 1
 	// 40% onto tab 2: left=160? ov = left+tabW-2*tabW = left-tabW → left=140 → ov=40.

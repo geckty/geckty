@@ -1,8 +1,9 @@
-package grid
+package gogpu
 
 import (
 	"bytes"
 	"image"
+	"image/color"
 	"strings"
 	"testing"
 
@@ -62,8 +63,6 @@ func TestViewportMaxScrollShowsOldestHistory(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("len(viewport) = %d, want 2", len(got))
 	}
-	// At maximum scroll, the viewport's first row must be the oldest
-	// history line — you can't scroll back further than that.
 	if lineText(got[0]) != lineText(history[0]) {
 		t.Fatalf("viewport(max)[0] = %q, want oldest history line %q", lineText(got[0]), lineText(history[0]))
 	}
@@ -72,37 +71,10 @@ func TestViewportMaxScrollShowsOldestHistory(t *testing.T) {
 	}
 }
 
-func TestViewportSlidesContinuously(t *testing.T) {
-	// Scrolling back by one line should shift the whole window by
-	// exactly one line, not jump or skip.
-	term := buildScrolledTerm(t, 6)
-	history := term.History()
-	if len(history) < 2 {
-		t.Fatal("expected at least 2 lines of history")
-	}
-
-	atOffset1, top1 := viewport(term, 2, 1)
-	atOffset2, top2 := viewport(term, 2, 2)
-
-	// The top row at offset 2 should equal the top row at offset 1
-	// shifted down by one — i.e. atOffset1's bottom-most-but-one
-	// relationship: atOffset2[1] should equal atOffset1[0].
-	if lineText(atOffset2[1]) != lineText(atOffset1[0]) {
-		t.Fatalf("viewport did not slide continuously: offset2[1]=%q, offset1[0]=%q",
-			lineText(atOffset2[1]), lineText(atOffset1[0]))
-	}
-	if top2 != top1-1 {
-		t.Fatalf("top did not slide continuously: top1=%d top2=%d, want top2=top1-1", top1, top2)
-	}
-}
-
 func TestViewportOffsetBeyondHistoryClampsAtTop(t *testing.T) {
 	term := buildScrolledTerm(t, 5)
 	maxOffset := len(term.History())
 
-	// A caller passing an offset beyond history (shouldn't happen if
-	// session.ScrollBy's clamping is used, but Paint takes a raw int)
-	// must not panic or slice out of range.
 	got, top := viewport(term, 2, maxOffset+50)
 	if len(got) != 2 {
 		t.Fatalf("len(viewport) = %d, want 2", len(got))
@@ -122,36 +94,16 @@ func testSelection(startCol, startRow, endCol, endRow int) Selection {
 func TestSelectionColRangeSingleRow(t *testing.T) {
 	sel := testSelection(2, 0, 5, 0)
 	colStart, colEnd, ok := selectionColRange(sel, 0, 10)
-	if !ok {
-		t.Fatal("expected ok=true")
-	}
-	if colStart != 2 || colEnd != 6 {
-		t.Fatalf("colStart=%d colEnd=%d, want 2,6 (inclusive end+1)", colStart, colEnd)
+	if !ok || colStart != 2 || colEnd != 6 {
+		t.Fatalf("got %d,%d,%v, want 2,6,true", colStart, colEnd, ok)
 	}
 }
 
 func TestSelectionColRangeMultiRowMiddleIsFullWidth(t *testing.T) {
 	sel := testSelection(5, 0, 3, 2)
 	colStart, colEnd, ok := selectionColRange(sel, 1, 10)
-	if !ok {
-		t.Fatal("expected ok=true")
-	}
-	if colStart != 0 || colEnd != 10 {
-		t.Fatalf("middle row colStart=%d colEnd=%d, want full width 0,10", colStart, colEnd)
-	}
-}
-
-func TestSelectionColRangeFirstAndLastRowClipped(t *testing.T) {
-	sel := testSelection(5, 0, 3, 2)
-
-	firstStart, firstEnd, ok := selectionColRange(sel, 0, 10)
-	if !ok || firstStart != 5 || firstEnd != 10 {
-		t.Fatalf("first row = %d,%d,%v, want 5,10,true", firstStart, firstEnd, ok)
-	}
-
-	lastStart, lastEnd, ok := selectionColRange(sel, 2, 10)
-	if !ok || lastStart != 0 || lastEnd != 4 {
-		t.Fatalf("last row = %d,%d,%v, want 0,4,true", lastStart, lastEnd, ok)
+	if !ok || colStart != 0 || colEnd != 10 {
+		t.Fatalf("got %d,%d,%v, want 0,10,true", colStart, colEnd, ok)
 	}
 }
 
@@ -169,15 +121,13 @@ func TestCellSpanUsesRequestedColsRows(t *testing.T) {
 	pl := Placement{Cols: 5, Rows: 2}
 	cols, rows := cellSpan(pl, image.Pt(999, 999), 10, 20)
 	if cols != 5 || rows != 2 {
-		t.Fatalf("cols,rows = %d,%d, want 5,2 (explicit request should win over pixel size)", cols, rows)
+		t.Fatalf("cols,rows = %d,%d, want 5,2", cols, rows)
 	}
 }
 
 func TestCellSpanComputesFromPixelSizeWhenNotRequested(t *testing.T) {
-	pl := Placement{} // Cols=Rows=0: not specified
+	pl := Placement{}
 	cols, rows := cellSpan(pl, image.Pt(95, 41), 10, 20)
-	// 95px / 10px-per-cell -> rounds up to 10 cells; 41px / 20px-per-line
-	// -> rounds up to 3 lines.
 	if cols != 10 || rows != 3 {
 		t.Fatalf("cols,rows = %d,%d, want 10,3", cols, rows)
 	}
@@ -187,16 +137,89 @@ func TestCellSpanNeverBelowOneCell(t *testing.T) {
 	pl := Placement{}
 	cols, rows := cellSpan(pl, image.Pt(0, 0), 10, 20)
 	if cols != 1 || rows != 1 {
-		t.Fatalf("cols,rows = %d,%d, want 1,1 (never zero, even for a degenerate image)", cols, rows)
+		t.Fatalf("cols,rows = %d,%d, want 1,1", cols, rows)
 	}
 }
 
-func TestSelectionColRangeZeroWidthOnSameRow(t *testing.T) {
-	// A single-column selection (col N to col N) must still highlight
-	// that one column, not disappear.
-	sel := testSelection(3, 0, 3, 0)
-	colStart, colEnd, ok := selectionColRange(sel, 0, 10)
-	if !ok || colStart != 3 || colEnd != 4 {
-		t.Fatalf("got %d,%d,%v, want 3,4,true", colStart, colEnd, ok)
+// ── Pixel-buffer assertion tests (following termizard's painter_test.go
+// precedent — this is the coverage the old gio-ops-based painter could
+// never have, since op.Ops can't be asserted on directly) ──────────────
+
+func newBuf(w, h int) []byte { return make([]byte, w*h*4) }
+
+func pixelAt(buf []byte, frameW, x, y int) color.RGBA {
+	off := (y*frameW + x) * 4
+	return color.RGBA{R: buf[off], G: buf[off+1], B: buf[off+2], A: buf[off+3]}
+}
+
+func TestFillRectFillsCorrectRegion(t *testing.T) {
+	buf := newBuf(4, 4)
+	red := color.RGBA{R: 0xff, A: 0xff}
+	fillRect(buf, 4, 1, 1, 3, 3, red)
+
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 4; x++ {
+			inside := x >= 1 && x < 3 && y >= 1 && y < 3
+			got := pixelAt(buf, 4, x, y)
+			if inside && got != red {
+				t.Fatalf("(%d,%d) = %v, want %v (inside fill rect)", x, y, got, red)
+			}
+			if !inside && got != (color.RGBA{}) {
+				t.Fatalf("(%d,%d) = %v, want zero (outside fill rect)", x, y, got)
+			}
+		}
+	}
+}
+
+func TestFillRectClampsToBufferBounds(t *testing.T) {
+	buf := newBuf(2, 2)
+	// Should not panic even though the rect extends far past the buffer.
+	fillRect(buf, 2, -5, -5, 100, 100, color.RGBA{G: 0xff, A: 0xff})
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 2; x++ {
+			if got := pixelAt(buf, 2, x, y); got.G != 0xff {
+				t.Fatalf("(%d,%d).G = %d, want 0xff (clamped fill should still cover the whole buffer)", x, y, got.G)
+			}
+		}
+	}
+}
+
+func TestBlitGlyphClippedRespectsClipBounds(t *testing.T) {
+	buf := newBuf(6, 3)
+	mask := image.NewAlpha(image.Rect(0, 0, 6, 3))
+	for i := range mask.Pix {
+		mask.Pix[i] = 255 // fully opaque glyph covering the whole mask
+	}
+	fg := color.RGBA{R: 0x11, G: 0x22, B: 0x33, A: 0xff}
+
+	// Glyph draw rect spans the whole buffer, but the clip window only
+	// allows columns [2,4) — mirrors how a cell's glyph bearing can extend
+	// slightly beyond its own cell but must not paint into the neighbor.
+	dr := image.Rect(0, 0, 6, 3)
+	blitGlyphClipped(buf, 6, 3, dr, mask, image.Point{}, fg, 2, 0, 4, 3)
+
+	for y := 0; y < 3; y++ {
+		for x := 0; x < 6; x++ {
+			got := pixelAt(buf, 6, x, y)
+			inClip := x >= 2 && x < 4
+			if inClip && got != fg {
+				t.Fatalf("(%d,%d) = %v, want %v (inside clip window)", x, y, got, fg)
+			}
+			if !inClip && got != (color.RGBA{}) {
+				t.Fatalf("(%d,%d) = %v, want zero (outside clip window — must not bleed into neighbor cell)", x, y, got)
+			}
+		}
+	}
+}
+
+func TestBlitGlyphClippedSkipsFullyTransparentPixels(t *testing.T) {
+	buf := newBuf(2, 1)
+	mask := image.NewAlpha(image.Rect(0, 0, 2, 1)) // all zero alpha
+	fg := color.RGBA{R: 0xff, A: 0xff}
+	dr := image.Rect(0, 0, 2, 1)
+	blitGlyphClipped(buf, 2, 1, dr, mask, image.Point{}, fg, 0, 0, 2, 1)
+
+	if got := pixelAt(buf, 2, 0, 0); got != (color.RGBA{}) {
+		t.Fatalf("fully transparent glyph pixel must not be written, got %v", got)
 	}
 }

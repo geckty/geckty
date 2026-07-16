@@ -5,43 +5,10 @@ package theme
 import (
 	"fmt"
 	"image/color"
-	"runtime"
-	"strings"
-
-	"gioui.org/font"
 
 	"github.com/geckty/geckty/internal/config"
 	"github.com/geckty/geckty/internal/vt/emu"
 )
-
-// MonospaceTypeface is the font.Font.Typeface every fixed-width label uses.
-// Platform default: Menlo (macOS); Cascadia Mono then Consolas (Windows —
-// proportional fallback widens cells so ConPTY gets too few columns and
-// PowerShell abbreviates paths with "…"); monospace elsewhere.
-var MonospaceTypeface = font.Typeface(defaultMonospaceFamily())
-
-func defaultMonospaceFamily() string {
-	switch runtime.GOOS {
-	case "windows":
-		// CSS-style list: first installed face wins in Gio's system shaper.
-		return "Cascadia Mono, Cascadia Code, Consolas, monospace"
-	case "darwin":
-		return "Menlo"
-	default:
-		return "monospace"
-	}
-}
-
-// SetMonospaceFamily applies a configured font family. Empty / generic
-// "monospace" keeps the platform default so Windows never stays on Menlo.
-func SetMonospaceFamily(family string) {
-	family = strings.TrimSpace(family)
-	if family == "" || strings.EqualFold(family, "monospace") {
-		MonospaceTypeface = font.Typeface(defaultMonospaceFamily())
-		return
-	}
-	MonospaceTypeface = font.Typeface(family)
-}
 
 // Palette maps emu.Color values to paintable colors.
 type Palette struct {

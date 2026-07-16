@@ -6,12 +6,11 @@ import (
 	"log/slog"
 	"os"
 
-	"gioui.org/app"
-
 	"github.com/glaciforge/slogsafe"
 
 	"github.com/geckty/geckty/internal/config"
 	"github.com/geckty/geckty/internal/ui"
+	"github.com/geckty/geckty/internal/ui/gogpu"
 )
 
 func main() {
@@ -43,21 +42,18 @@ func main() {
 		log.FatalContext(ctx, "load config", slogsafe.Err(err))
 	}
 
-	// Run through the Backend interface, not the concrete ui.Run
-	// function directly — main.go doesn't need to know the UI is
-	// gio-based, only that something implements Backend. Today
-	// ui.GioBackend is the only implementation; the point of routing
-	// through the interface here, rather than just documenting it as a
-	// theoretical future option, is that main.go is already written the
-	// way it'd need to be to swap backends later.
-	var backend ui.Backend = ui.GioBackend{}
+	// Run through the Backend interface, not the concrete Run function
+	// directly — main.go doesn't need to know the UI toolkit, only that
+	// something implements Backend. gogpu.Backend replaces the former
+	// gio-based ui.GioBackend (see internal/ui/gogpu's package doc for
+	// why: a reproducible gio D3D11 rendering bug on Windows). Unlike gio,
+	// gogpu's App.Run is itself the platform event pump, so it's called
+	// directly on the main goroutine rather than via a background
+	// goroutine plus a separate app.Main() call.
+	var backend ui.Backend = gogpu.Backend{}
 
-	go func() {
-		if err := backend.Run(cfg); err != nil {
-			slog.ErrorContext(ctx, "geckty exited", slogsafe.Err(err))
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}()
-	app.Main()
+	if err := backend.Run(cfg); err != nil {
+		slog.ErrorContext(ctx, "geckty exited", slogsafe.Err(err))
+		os.Exit(1)
+	}
 }

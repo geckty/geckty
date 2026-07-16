@@ -1,11 +1,11 @@
-package ui
+package gogpu
 
 import (
 	"sync"
 	"time"
 )
 
-// resizeDebounceDelay absorbs continuous window-drag FrameEvents without
+// resizeDebounceDelay absorbs continuous window-drag resize events without
 // feeling laggy once the drag stops.
 const resizeDebounceDelay = 120 * time.Millisecond
 
@@ -31,7 +31,7 @@ func newResizeDebouncer(delay time.Duration, apply func(cols, rows int)) *resize
 	return &resizeDebouncer{delay: delay, apply: apply}
 }
 
-// Trigger records a new target size (UI goroutine per FrameEvent).
+// Trigger records a new target size (called from the draw callback per frame).
 func (d *resizeDebouncer) Trigger(cols, rows int) {
 	d.mu.Lock()
 	d.cols, d.rows = cols, rows
