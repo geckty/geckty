@@ -89,6 +89,21 @@ type uiState struct {
 	// same purpose as termizard's identically-named flag.
 	keyHandled bool
 
+	// perWindowKeyPressed / perWindowTextInputed dedupe the per-window
+	// SetOnKeyPress/SetOnTextInput callbacks (wireWindow) against the
+	// EventSource-based ones (wireEventSource): on Linux, gogpu reports
+	// WindowID=0 for keyboard events, so the per-window callbacks are
+	// silently never invoked there — EventSource is the only path that
+	// actually fires on Linux. On Windows/macOS the per-window callbacks
+	// do fire, and each sets its own flag so the EventSource-side handler
+	// skips re-dispatching the same event. Separate flags (not one shared
+	// flag) because SetOnKeyPress fires before the following WM_CHAR/
+	// TextInput on some platforms — sharing a flag would cause the
+	// EventSource side to wrongly swallow that following character. Same
+	// fix termizard already shipped for this exact gogpu behavior.
+	perWindowKeyPressed  bool
+	perWindowTextInputed bool
+
 	// pendingTexSync / inLiveResize implement the Windows live-resize
 	// freeze: repainting a full frame on every WM_SIZE tick during a drag
 	// is expensive and was the source of a text-truncation-looking bug in
@@ -141,6 +156,7 @@ func Run(cfg *config.Config) error {
 	defer stopBlink()
 
 	s.wireLifecycleCallbacks(gapp)
+	s.wireEventSource(gapp)
 
 	return gapp.Run()
 }
@@ -280,12 +296,57 @@ func (s *uiState) wireWindow(win *gogpulib.Window) {
 	win.SetOnDraw(s.onDraw)
 	win.SetOnResize(func(_, _ int) { s.app.RequestRedraw() })
 	win.SetOnKeyPress(func(key gpucontext.Key, mods gpucontext.Modifiers) {
+		s.perWindowKeyPressed = true
 		s.handleKeyPress(key, mods)
 	})
-	win.SetOnTextInput(s.handleTextInput)
+	win.SetOnTextInput(func(text string) {
+		s.perWindowTextInputed = true
+		s.handleTextInput(text)
+	})
 	win.SetOnPointer(s.handlePointerEvent)
 	win.SetOnScroll(s.handleScrollEvent)
 	win.SetOnClose(func() bool { return true })
+}
+
+// wireEventSource registers keyboard handling on gapp's global EventSource
+// in addition to wireWindow's per-window callbacks, and — on Linux only —
+// pointer/scroll handling too. This works around a real gogpu behavior
+// (confirmed by termizard's own field experience against the same
+// library): on Linux, keyboard/pointer/scroll events carry WindowID=0, so
+// the per-window SetOnKeyPress/SetOnTextInput/SetOnPointer/SetOnScroll
+// callbacks registered in wireWindow are silently never invoked there —
+// EventSource dispatches unconditionally regardless of WindowID and is the
+// only input path that actually works on Linux. On Windows/macOS, the
+// per-window callbacks fire first and set the perWindowKeyPressed/
+// perWindowTextInputed flags so this function's keyboard handlers skip
+// re-dispatching the same event; pointer/scroll are deliberately NOT also
+// routed through EventSource on those platforms, since the per-window
+// callbacks already work there and doing both would double-dispatch.
+func (s *uiState) wireEventSource(gapp *gogpulib.App) {
+	src := gapp.EventSource()
+	src.OnKeyPress(func(key gpucontext.Key, mods gpucontext.Modifiers) {
+		if s.perWindowKeyPressed {
+			s.perWindowKeyPressed = false
+			return
+		}
+		s.handleKeyPress(key, mods)
+	})
+	src.OnTextInput(func(text string) {
+		if s.perWindowTextInputed {
+			s.perWindowTextInputed = false
+			return
+		}
+		s.handleTextInput(text)
+	})
+	if runtime.GOOS != "linux" {
+		return
+	}
+	if psrc, ok := src.(gpucontext.PointerEventSource); ok {
+		psrc.OnPointer(s.handlePointerEvent)
+	}
+	if ssrc, ok := src.(gpucontext.ScrollEventSource); ok {
+		ssrc.OnScrollEvent(s.handleScrollEvent)
+	}
 }
 
 // handleKeyPress matches a shortcut first, then falls through to Kitty/

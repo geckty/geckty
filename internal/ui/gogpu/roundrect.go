@@ -106,7 +106,7 @@ func roundRectCoverage(px, py float64, x0, y0, x1, y1, radius int) float64 {
 	r := float64(radius)
 	inCornerX := px < fx0+r || px > fx1-r
 	inCornerY := py < fy0+r || py > fy1-r
-	if !(inCornerX && inCornerY) {
+	if !inCornerX || !inCornerY {
 		return 1
 	}
 	cx := px

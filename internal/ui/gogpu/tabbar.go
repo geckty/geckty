@@ -150,8 +150,8 @@ func (tb *TabBar) Layout(buf []byte, frameW, frameH, barH int, pal theme.Palette
 
 	g := chrome.ComputeGeometry(frameW, len(tabs), minTabW, plusW, closeZoneW)
 	scrollX := drag.ScrollX
-	if max := chrome.ScrollMax(g, len(tabs)); scrollX > max {
-		scrollX = max
+	if scrollMax := chrome.ScrollMax(g, len(tabs)); scrollX > scrollMax {
+		scrollX = scrollMax
 	}
 	if scrollX < 0 {
 		scrollX = 0
@@ -200,7 +200,7 @@ func (tb *TabBar) Layout(buf []byte, frameW, frameH, barH int, pal theme.Palette
 	}
 
 	if g.PlusWidth > 0 {
-		tb.paintPlusButton(buf, frameW, frameH, pal, g.PlusX, g.PlusWidth, barH, inset, hoverPlus)
+		tb.paintPlusButton(buf, frameW, pal, g.PlusX, g.PlusWidth, barH, inset, hoverPlus)
 	}
 	if statusText != "" {
 		tb.paintStatus(buf, frameW, frameH, pal, g, barH, statusText)
@@ -274,7 +274,7 @@ func (tb *TabBar) paintTab(buf []byte, frameW, frameH int, pal theme.Palette, t 
 // bars) rather than a font glyph — guarantees pixel-exact centering
 // regardless of the UI font's own glyph bearing, and lets hover brighten
 // both the chip and the cross consistently.
-func (tb *TabBar) paintPlusButton(buf []byte, frameW, frameH int, pal theme.Palette, x0, w, h, inset int, hovered bool) {
+func (tb *TabBar) paintPlusButton(buf []byte, frameW int, pal theme.Palette, x0, w, h, inset int, hovered bool) {
 	// The chip is a big, generously-sized circle (bigger than the tab
 	// pills' own vertical inset would give) — only the cross drawn inside
 	// it is kept small.

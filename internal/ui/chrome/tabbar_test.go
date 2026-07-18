@@ -189,8 +189,8 @@ func TestDropIndexMidpoints(t *testing.T) {
 
 func TestScrollHelpers(t *testing.T) {
 	g := ComputeGeometry(400, 12, testMinTabWidth, testPlusWidth, testCloseZoneWidth)
-	if max := ScrollMax(g, 12); max <= 0 {
-		t.Fatalf("ScrollMax = %d, want > 0", max)
+	if scrollMax := ScrollMax(g, 12); scrollMax <= 0 {
+		t.Fatalf("ScrollMax = %d, want > 0", scrollMax)
 	}
 	if got := TabAtScrolled(0, g.TabWidth, g, 12); got != 1 {
 		t.Fatalf("TabAtScrolled = %d, want 1", got)
@@ -203,8 +203,8 @@ func TestActiveTabPin(t *testing.T) {
 	if !pinL || pinR {
 		t.Fatalf("ActiveTabPin(left) = %v,%v, want true,false", pinL, pinR)
 	}
-	max := ScrollMax(g, 12)
-	pinL, pinR = ActiveTabPin(11, 12, g.TabWidth, g.PlusX, max-g.TabWidth/2)
+	scrollMax := ScrollMax(g, 12)
+	pinL, pinR = ActiveTabPin(11, 12, g.TabWidth, g.PlusX, scrollMax-g.TabWidth/2)
 	if pinL || !pinR {
 		t.Fatalf("ActiveTabPin(right) = %v,%v, want false,true", pinL, pinR)
 	}

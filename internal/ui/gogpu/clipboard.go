@@ -58,10 +58,10 @@ func clipboardRead(app clipboardProvider) (string, error) {
 
 func clipboardWriteNative(text string) error {
 	var cmd *exec.Cmd
-	switch {
-	case runtime.GOOS == "darwin":
+	switch runtime.GOOS {
+	case "darwin":
 		cmd = exec.Command("pbcopy")
-	case runtime.GOOS == osWindows:
+	case osWindows:
 		cmd = exec.Command("clip")
 	default:
 		if _, err := exec.LookPath("wl-copy"); err == nil {
@@ -83,10 +83,10 @@ func clipboardWriteNative(text string) error {
 
 func clipboardReadNative() (string, error) {
 	var cmd *exec.Cmd
-	switch {
-	case runtime.GOOS == "darwin":
+	switch runtime.GOOS {
+	case "darwin":
 		cmd = exec.Command("pbpaste")
-	case runtime.GOOS == osWindows:
+	case osWindows:
 		cmd = exec.Command("powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw")
 	default:
 		if _, err := exec.LookPath("wl-paste"); err == nil {

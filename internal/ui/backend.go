@@ -1,3 +1,5 @@
+// Package ui defines the toolkit-agnostic Backend interface that
+// cmd/geckty/main.go drives; internal/ui/gogpu implements it.
 package ui
 
 import "github.com/geckty/geckty/internal/config"

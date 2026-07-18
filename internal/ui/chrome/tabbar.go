@@ -62,11 +62,11 @@ func TabsEnd(g Geometry, numTabs int) int {
 // strip (0 when everything fits).
 func ScrollMax(g Geometry, numTabs int) int {
 	total := TabsEnd(g, numTabs)
-	max := total - g.PlusX
-	if max < 0 {
+	overflow := total - g.PlusX
+	if overflow < 0 {
 		return 0
 	}
-	return max
+	return overflow
 }
 
 // ActiveTabPin mirrors termizard: when tabs overflow and the active tab
@@ -92,16 +92,6 @@ func ActiveTabPin(activeIdx, numTabs, tabW, tabsAreaW, scrollX int) (pinLeft, pi
 		return true, false
 	}
 	return false, false
-}
-
-func clampScroll(scroll, max int) int {
-	if scroll < 0 {
-		return 0
-	}
-	if scroll > max {
-		return max
-	}
-	return scroll
 }
 
 // TabAt maps a physical X position to a tab index, or -1 if x is outside
