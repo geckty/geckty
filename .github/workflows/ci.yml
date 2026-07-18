@@ -62,13 +62,16 @@ jobs:
       # directly useful: internal/session.Session.Write's mutex is exactly
       # the kind of concurrent-write path -race exists to catch.
       #
-      # "./..." is quoted here (unlike the build job's) because pwsh — the
-      # default shell on windows-latest — otherwise mis-tokenizes this
-      # particular flag combination: an unquoted trailing ./... after
-      # -coverprofile=coverage.txt was observed reaching `go test` as the
-      # literal package pattern ".txt", failing with "no required module
-      # provides package .txt". Quoting sidesteps pwsh's parsing here.
-      - run: go test -race -parallel 4 -coverprofile=coverage.txt -covermode=atomic "./..."
+      # shell: bash is explicit here because pwsh — the default shell on
+      # windows-latest — reproducibly mangles this exact flag combination:
+      # both an unquoted AND a quoted trailing ./... after
+      # -coverprofile=coverage.txt were observed reaching `go test` as the
+      # literal package pattern ".txt" ("no required module provides
+      # package .txt"), so quoting alone didn't fix it. Git for Windows
+      # ships bash on windows-latest runners; using it here sidesteps
+      # pwsh's parsing entirely rather than continuing to guess at it.
+      - shell: bash
+        run: go test -race -parallel 4 -coverprofile=coverage.txt -covermode=atomic ./...
       - if: runner.os == 'Linux'
         uses: codecov/codecov-action@v5
         with:
