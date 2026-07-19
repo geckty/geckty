@@ -33,6 +33,16 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # id-token: write is required for the codecov upload step's use_oidc
+    # mode below (it mints a short-lived OIDC token instead of needing a
+    # CODECOV_TOKEN secret) — GitHub Actions never grants id-token access
+    # implicitly, even on a same-repo (non-fork) pull_request, so it must
+    # be requested explicitly. Once any permissions: block is present,
+    # every other scope defaults to none, so contents: read is listed too
+    # (actions/checkout needs it).
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -72,7 +82,13 @@ jobs:
       # pwsh's parsing entirely rather than continuing to guess at it.
       - shell: bash
         run: go test -race -parallel 4 -coverprofile=coverage.txt -covermode=atomic ./...
+      # continue-on-error: true because coverage reporting is observability,
+      # not a correctness gate — Codecov being unreachable, misconfigured,
+      # or (previously) missing the id-token permission above shouldn't
+      # fail this job or, via the matrix's fail-fast, cancel the other
+      # platforms' otherwise-passing test runs.
       - if: runner.os == 'Linux'
+        continue-on-error: true
         uses: codecov/codecov-action@v5
         with:
           use_oidc: true
