@@ -6,6 +6,34 @@ import (
 	"testing"
 )
 
+func TestDefaultPathUsesXDGConfigHome(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/xdg-config")
+	got, err := DefaultPath()
+	if err != nil {
+		t.Fatalf("DefaultPath: %v", err)
+	}
+	want := filepath.Join("/xdg-config", "geckty", "config.toml")
+	if got != want {
+		t.Fatalf("DefaultPath() = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultPathFallsBackToHomeConfig(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skipf("no home directory available: %v", err)
+	}
+	got, err := DefaultPath()
+	if err != nil {
+		t.Fatalf("DefaultPath: %v", err)
+	}
+	want := filepath.Join(home, ".config", "geckty", "config.toml")
+	if got != want {
+		t.Fatalf("DefaultPath() = %q, want %q", got, want)
+	}
+}
+
 func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 	cfg, err := Load(filepath.Join(t.TempDir(), "does-not-exist.toml"))
 	if err != nil {

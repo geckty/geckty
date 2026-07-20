@@ -140,3 +140,40 @@ func TestNewPaletteRejectsInvalidConfig(t *testing.T) {
 		t.Fatal("expected error for invalid foreground")
 	}
 }
+
+func TestNewPaletteRejectsInvalidBackground(t *testing.T) {
+	cfg := config.Default().Colors
+	cfg.Background = "not-a-color"
+	if _, err := NewPalette(cfg); err == nil {
+		t.Fatal("expected error for invalid background")
+	}
+}
+
+func TestNewPaletteRejectsInvalidSelection(t *testing.T) {
+	cfg := config.Default().Colors
+	cfg.Selection = "not-a-color"
+	if _, err := NewPalette(cfg); err == nil {
+		t.Fatal("expected error for invalid selection")
+	}
+}
+
+func TestNewPaletteDefaultsSelectionWhenEmpty(t *testing.T) {
+	cfg := config.Default().Colors
+	cfg.Selection = ""
+	p, err := NewPalette(cfg)
+	if err != nil {
+		t.Fatalf("NewPalette: %v", err)
+	}
+	want := color.NRGBA{R: 0x52, G: 0x52, B: 0x52, A: 0xff}
+	if p.Selection != want {
+		t.Fatalf("Selection = %v, want fallback mid-grey %v", p.Selection, want)
+	}
+}
+
+func TestNewPaletteRejectsInvalidANSI(t *testing.T) {
+	cfg := config.Default().Colors
+	cfg.ANSI[3] = "not-a-color"
+	if _, err := NewPalette(cfg); err == nil {
+		t.Fatal("expected error for invalid ANSI color")
+	}
+}

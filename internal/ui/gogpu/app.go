@@ -45,8 +45,8 @@ const pluginStatusInterval = time.Second
 // needs each handler as its own function value rather than one big loop.
 type uiState struct {
 	cfg     *config.Config
-	app     *gogpulib.App
-	win     *gogpulib.Window
+	app     gpuApp
+	win     gpuWindow
 	keymap  *Keymap
 	palette theme.Palette
 	painter *Painter
@@ -166,7 +166,7 @@ func Run(cfg *config.Config) error {
 // by wireSessionManager/wireFirstTab/startBlinkLoop/wireLifecycleCallbacks
 // so Run itself reads as a short sequence of named setup steps rather than
 // one long function.
-func buildUIState(cfg *config.Config, palette theme.Palette, keymap *Keymap) (*uiState, *gogpulib.App) {
+func buildUIState(cfg *config.Config, palette theme.Palette, keymap *Keymap) (*uiState, gpuApp) {
 	winW, winH := cfg.Window.Width, cfg.Window.Height
 	if winW <= 0 {
 		winW = 1200
@@ -207,7 +207,7 @@ func buildUIState(cfg *config.Config, palette theme.Palette, keymap *Keymap) (*u
 // closes; the debouncer coalesces PTY/emu resizes across every open tab
 // (see resizeDebouncer's own doc comment for why per-frame resize would be
 // too expensive to apply directly).
-func (s *uiState) wireSessionManager(gapp *gogpulib.App) {
+func (s *uiState) wireSessionManager(gapp gpuApp) {
 	s.mgr = session.NewManager(func() {
 		gapp.RequestRedraw()
 		if s.mgr != nil && len(s.mgr.Tabs()) == 0 {
@@ -226,7 +226,7 @@ func (s *uiState) wireSessionManager(gapp *gogpulib.App) {
 // wireFirstTab sets s.newTab (spawning cfg.ShellCommand() in the user's
 // home directory at the current grid size) and opens the first tab,
 // returning any error from that initial spawn.
-func (s *uiState) wireFirstTab(cfg *config.Config, gapp *gogpulib.App) error {
+func (s *uiState) wireFirstTab(cfg *config.Config, gapp gpuApp) error {
 	homeDir, _ := os.UserHomeDir()
 	s.newTab = func() error {
 		_, err := s.mgr.New(session.Config{
@@ -244,7 +244,7 @@ func (s *uiState) wireFirstTab(cfg *config.Config, gapp *gogpulib.App) error {
 // startBlinkLoop starts the cursor-blink ticker goroutine and returns a
 // stop func that terminates it — mirrors loadPlugins' stopPlugins pattern
 // so Run's shutdown sequence reads the same way for both.
-func (s *uiState) startBlinkLoop(gapp *gogpulib.App) (stop func()) {
+func (s *uiState) startBlinkLoop(gapp gpuApp) (stop func()) {
 	done := make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(530 * time.Millisecond)
@@ -266,7 +266,7 @@ func (s *uiState) startBlinkLoop(gapp *gogpulib.App) (stop func()) {
 // callbacks: forward focus-mode changes to the active session, close every
 // tab's session on window close, and wire the primary window's own event
 // callbacks (see wireWindow) once its GPU surface is ready.
-func (s *uiState) wireLifecycleCallbacks(gapp *gogpulib.App) {
+func (s *uiState) wireLifecycleCallbacks(gapp gpuApp) {
 	gapp.OnFocus(func(focused bool) {
 		if active := s.mgr.Active(); active != nil {
 			active.Term.RLock()
@@ -291,7 +291,7 @@ func (s *uiState) wireLifecycleCallbacks(gapp *gogpulib.App) {
 	})
 }
 
-func (s *uiState) wireWindow(win *gogpulib.Window) {
+func (s *uiState) wireWindow(win gpuWindow) {
 	s.win = win
 	win.SetOnDraw(s.onDraw)
 	win.SetOnResize(func(_, _ int) { s.app.RequestRedraw() })
@@ -322,7 +322,7 @@ func (s *uiState) wireWindow(win *gogpulib.Window) {
 // re-dispatching the same event; pointer/scroll are deliberately NOT also
 // routed through EventSource on those platforms, since the per-window
 // callbacks already work there and doing both would double-dispatch.
-func (s *uiState) wireEventSource(gapp *gogpulib.App) {
+func (s *uiState) wireEventSource(gapp gpuApp) {
 	src := gapp.EventSource()
 	src.OnKeyPress(func(key gpucontext.Key, mods gpucontext.Modifiers) {
 		if s.perWindowKeyPressed {
@@ -724,7 +724,7 @@ func color32(r, g, b, a uint8) color.RGBA {
 // loadPlugins loads cfg.Plugins (opt-in) and ticks status text at
 // pluginStatusInterval, invalidating only when the text changes. Failures
 // are logged and skipped. Returns a nil host when Plugins is empty.
-func loadPlugins(cfg *config.Config, app *gogpulib.App) (*plugin.Host, func()) {
+func loadPlugins(cfg *config.Config, app gpuApp) (*plugin.Host, func()) {
 	if len(cfg.Plugins) == 0 {
 		return nil, func() {}
 	}
