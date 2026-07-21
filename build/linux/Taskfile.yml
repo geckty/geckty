@@ -1,0 +1,46 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:
+    summary: Builds the Linux binary
+    deps:
+      - task: common:go:mod:tidy
+    # Deliberately no CGO_ENABLED=0: written when this project's X11/Wayland
+    # backend was gio, which needed cgo on Linux. gogpu (the current
+    # backend) advertises itself as cgo-free, so this may no longer be
+    # necessary — unverified; see ci.yml's equivalent comment.
+    cmds:
+      - |
+        go build -trimpath -buildvcs=false \
+          -ldflags="-w -s" \
+          -o "{{.BIN_DIR}}/{{.APP_NAME}}" {{.MAIN_PACKAGE}}
+    env:
+      GOOS: linux
+      GOARCH: '{{.ARCH | default ARCH}}'
+
+  package:
+    summary: Packages the application as a .deb via nfpm
+    deps:
+      - task: build
+    cmds:
+      - task: create:deb
+
+  create:deb:
+    summary: Creates a .deb package via nfpm
+    preconditions:
+      - sh: command -v nfpm >/dev/null 2>&1
+        msg: "nfpm is required. Install: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest"
+    cmds:
+      - GOARCH={{.ARCH | default ARCH}} nfpm package --config ./build/linux/nfpm/nfpm.yaml --packager deb --target ./{{.BIN_DIR}}
+    vars:
+      ARCH: '{{.ARCH | default ARCH}}'
+
+  run:
+    summary: Builds and runs geckty
+    deps:
+      - task: build
+    cmds:
+      - '{{.BIN_DIR}}/{{.APP_NAME}}'

@@ -1,0 +1,17 @@
+coverage:
+  precision: 2
+  round: down
+  range: "70...85"
+  status:
+    project:
+      default:
+        target: 85%
+        threshold: 1%
+    patch:
+      default:
+        target: 85%
+        threshold: 1%
+
+ignore:
+  - "cmd/"
+  - "scripts/"

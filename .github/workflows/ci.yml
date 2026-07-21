@@ -1,0 +1,177 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Install gogpu build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcursor-dev libxfixes-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
+      - run: go build -trimpath -ldflags="-w -s" ./...
+
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # id-token: write is required for the codecov upload step's use_oidc
+    # mode below (it mints a short-lived OIDC token instead of needing a
+    # CODECOV_TOKEN secret) — GitHub Actions never grants id-token access
+    # implicitly, even on a same-repo (non-fork) pull_request, so it must
+    # be requested explicitly. Once any permissions: block is present,
+    # every other scope defaults to none, so contents: read is listed too
+    # (actions/checkout needs it).
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Install gogpu build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcursor-dev libxfixes-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
+      # go vet runs on every platform now — previously Linux-only, which
+      # meant internal/pty's Windows-only files (conpty_windows.go et al.)
+      # had never actually been vetted in this project's history despite
+      # existing since early on; cross-compiling (go build) doesn't run
+      # vet's analyzers. -unsafeptr is disabled only on Windows: vet's
+      # heuristic flags one deliberate, documented conversion in
+      # conpty_windows.go (embedding a windows.Handle's numeric value
+      # directly as a PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE attribute, per
+      # the Win32 API's own documented by-value contract — see that file's
+      # doc comment) that isn't a real bug; the check stays fully enabled
+      # on Linux/macOS, where no such exception exists.
+      - if: runner.os == 'Windows'
+        run: go vet -unsafeptr=false ./...
+      - if: runner.os != 'Windows'
+        run: go vet ./...
+      # -race is viable here (unlike a CGO_ENABLED=0 build) and is
+      # directly useful: internal/session.Session.Write's mutex is exactly
+      # the kind of concurrent-write path -race exists to catch.
+      #
+      # shell: bash is explicit here because pwsh — the default shell on
+      # windows-latest — reproducibly mangles this exact flag combination:
+      # both an unquoted AND a quoted trailing ./... after
+      # -coverprofile=coverage.txt were observed reaching `go test` as the
+      # literal package pattern ".txt" ("no required module provides
+      # package .txt"), so quoting alone didn't fix it. Git for Windows
+      # ships bash on windows-latest runners; using it here sidesteps
+      # pwsh's parsing entirely rather than continuing to guess at it.
+      - shell: bash
+        run: go test -race -parallel 4 -coverprofile=coverage.txt -covermode=atomic ./...
+      # continue-on-error: true because coverage reporting is observability,
+      # not a correctness gate — Codecov being unreachable, misconfigured,
+      # or (previously) missing the id-token permission above shouldn't
+      # fail this job or, via the matrix's fail-fast, cancel the other
+      # platforms' otherwise-passing test runs.
+      - if: runner.os == 'Linux'
+        continue-on-error: true
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          files: coverage.txt
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcursor-dev libxfixes-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          args: --timeout=5m
+
+  formatting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+  deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: go run github.com/psampaz/go-mod-outdated@latest -update -direct || true
+
+  # Unlike the deps job above (informational, non-blocking — "outdated"
+  # isn't itself a problem), govulncheck fails the build: it doesn't just
+  # flag a CVE existing somewhere in the dependency tree, it does call-
+  # graph analysis to report only vulnerabilities actually reachable from
+  # geckty's own code, which is a real, actionable finding, not noise.
+  # gosec (already enabled in .golangci.yml's lint job) checks the code
+  # geckty itself writes; govulncheck checks the dependencies it pulls
+  # in — different, complementary layers, not overlapping coverage.
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcursor-dev libxfixes-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...
+
+  smoke-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcursor-dev libxfixes-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev xvfb
+      - run: go build -o geckty ./cmd/geckty
+      # Wayland is intentionally not smoke-tested here: gogpu (the UI
+      # backend, see internal/ui/gogpu) hard-requires a wl_seat global
+      # during startup, but Weston's headless-backend deliberately never
+      # advertises one (an upstream Weston design decision, not a bug) —
+      # so no CI-feasible headless-Weston smoke test can ever pass here.
+      # Wayland itself is still exercised interactively by maintainers on
+      # real compositors; revisit if a wlroots-based headless compositor
+      # (e.g. sway with WLR_BACKENDS=headless) is worth the added CI
+      # complexity of providing a virtual seat.
+      - name: Smoke test under Xvfb (X11)
+        run: |
+          xvfb-run --auto-servernum timeout 5 ./geckty || [ $? -eq 124 ]

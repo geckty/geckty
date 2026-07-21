@@ -1,0 +1,41 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:
+    summary: Builds the Windows binary
+    deps:
+      - task: common:go:mod:tidy
+    cmds:
+      - |
+        go build -trimpath -buildvcs=false \
+          -ldflags="-w -s" \
+          -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" {{.MAIN_PACKAGE}}
+    env:
+      GOOS: windows
+      GOARCH: '{{.ARCH | default ARCH}}'
+
+  package:
+    summary: Packages the application as an NSIS installer
+    deps:
+      - task: build
+    cmds:
+      - task: create:installer
+
+  create:installer:
+    summary: Creates an NSIS installer
+    preconditions:
+      - sh: command -v makensis >/dev/null 2>&1
+        msg: "makensis (NSIS) is required. See https://nsis.sourceforge.io/"
+    dir: build/windows/nsis
+    cmds:
+      - makensis "-DARCH={{.ARCH | default ARCH}}" project.nsi
+
+  run:
+    summary: Builds and runs geckty
+    deps:
+      - task: build
+    cmds:
+      - '{{.BIN_DIR}}/{{.APP_NAME}}.exe'
