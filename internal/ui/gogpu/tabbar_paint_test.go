@@ -115,7 +115,7 @@ func TestDrawTextClipsToBox(t *testing.T) {
 }
 
 func TestTabTitleFallsBackToDir(t *testing.T) {
-	tab := newTestTab(t, 1, "/tmp")
+	tab := newTestTab(t, 1, t.TempDir())
 	got := tabTitle(tab)
 	if got == "" {
 		t.Fatal("tabTitle should not be empty")
@@ -135,7 +135,7 @@ func TestTabTitleFallsBackToTabNumber(t *testing.T) {
 func TestPaintTabAndPlusButton(t *testing.T) {
 	tb := testTabBar()
 	pal := testPalette()
-	tab := newTestTab(t, 1, "/tmp")
+	tab := newTestTab(t, 1, t.TempDir())
 
 	buf := newBuf(200, 40)
 	tb.paintTab(buf, 200, 40, pal, tab, 0, 100, 32, 3, true, false, false, true, true)
@@ -186,8 +186,8 @@ func TestLayoutPaintsTabsAndPlusButton(t *testing.T) {
 	tb := testTabBar()
 	pal := testPalette()
 	tabs := []session.Tab{
-		newTestTab(t, 1, "/tmp"),
-		newTestTab(t, 2, "/tmp"),
+		newTestTab(t, 1, t.TempDir()),
+		newTestTab(t, 2, t.TempDir()),
 	}
 
 	buf := newBuf(400, 40)
@@ -205,9 +205,9 @@ func TestLayoutWithActiveDrag(t *testing.T) {
 	tb := testTabBar()
 	pal := testPalette()
 	tabs := []session.Tab{
-		newTestTab(t, 1, "/tmp"),
-		newTestTab(t, 2, "/tmp"),
-		newTestTab(t, 3, "/tmp"),
+		newTestTab(t, 1, t.TempDir()),
+		newTestTab(t, 2, t.TempDir()),
+		newTestTab(t, 3, t.TempDir()),
 	}
 
 	buf := newBuf(400, 40)

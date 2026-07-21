@@ -3,11 +3,26 @@
 package pty
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
+)
+
+// ptyOpenRetries and ptyOpenRetryDelay bound the retry below: on macOS,
+// opening /dev/ptmx can transiently fail with ENODEV ("device not
+// configured") when many pseudo-terminals are allocated concurrently —
+// observed as flaky CI failures under `go test -parallel` across packages
+// that each spawn real shells (internal/pty, internal/session,
+// internal/plugin, internal/ui/gogpu). The device frees up within
+// milliseconds, so a few short retries clear it without masking a genuine,
+// persistent failure.
+const (
+	ptyOpenRetries    = 5
+	ptyOpenRetryDelay = 20 * time.Millisecond
 )
 
 type posixPTY struct {
@@ -43,7 +58,15 @@ func Open(cfg Config) (PTY, error) {
 		rows = 24
 	}
 
-	master, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
+	var master *os.File
+	var err error
+	for attempt := 0; ; attempt++ {
+		master, err = pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
+		if err == nil || !errors.Is(err, syscall.ENODEV) || attempt >= ptyOpenRetries {
+			break
+		}
+		time.Sleep(ptyOpenRetryDelay)
+	}
 	if err != nil {
 		return nil, err
 	}
