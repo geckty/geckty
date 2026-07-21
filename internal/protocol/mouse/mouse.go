@@ -20,9 +20,9 @@ const (
 )
 
 // Modifiers is a toolkit-agnostic set of keyboard modifiers held during a
-// wheel event. internal/protocol/* packages don't import gio (only
-// internal/ui does) — callers translate from their UI toolkit's modifier
-// type into this one at the boundary (see internal/ui/app.go).
+// wheel event. internal/protocol/* packages don't import gpucontext (only
+// internal/ui/gogpu does) — callers translate from their UI toolkit's
+// modifier type into this one at the boundary (see internal/ui/gogpu/app.go).
 type Modifiers uint8
 
 // Modifier bits.

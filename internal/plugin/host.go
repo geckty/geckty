@@ -1,10 +1,9 @@
-// Package plugin runs geckty's user-authored WASM plugins via wazero
-// (pure Go, no cgo — avoids stacking a second cgo dependency on top of
-// gio's own cgo GPU bindings). Like internal/session and internal/vt, this
-// package has no gio import; internal/ui decides when to call a plugin's
-// hooks and what to do with the results (see internal/ui/app.go's plugin
-// wiring and the project plan's M9 write-up for the redraw-cadence
-// decision).
+// Package plugin runs geckty's user-authored WASM plugins via wazero (pure
+// Go, no cgo). Like internal/session and internal/vt, this package has no
+// gogpu/gpucontext import; internal/ui/gogpu decides when to call a
+// plugin's hooks and what to do with the results (see
+// internal/ui/gogpu/app.go's plugin wiring and the project plan's M9
+// write-up for the redraw-cadence decision).
 //
 // # Guest toolchain
 //

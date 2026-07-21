@@ -8,8 +8,10 @@ tasks:
     summary: Builds the Linux binary
     deps:
       - task: common:go:mod:tidy
-    # Deliberately no CGO_ENABLED=0: gio's X11/Wayland+EGL backend needs
-    # cgo on Linux — see ci.yml's equivalent comment.
+    # Deliberately no CGO_ENABLED=0: written when this project's X11/Wayland
+    # backend was gio, which needed cgo on Linux. gogpu (the current
+    # backend) advertises itself as cgo-free, so this may no longer be
+    # necessary — unverified; see ci.yml's equivalent comment.
     cmds:
       - |
         go build -trimpath -buildvcs=false \

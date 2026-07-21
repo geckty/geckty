@@ -16,6 +16,13 @@ func Default() *Config {
 			// config.example.toml ("." / "-").
 			WordChars: "._-",
 		},
+		TabBar: TabBarConfig{
+			// 2 (not 1) so a single open tab shows neither the strip nor
+			// "+" — matching Terminal.app/iTerm2's default of staying out
+			// of the way until there's a second tab to switch between.
+			ShowThreshold: 2,
+			PlusButton:    PlusButtonConfig{ShowThreshold: 2},
+		},
 		Keybindings: defaultKeybindings(),
 	}
 }

@@ -1,6 +1,7 @@
 package gogpu
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/gogpu/gpucontext"
@@ -8,6 +9,19 @@ import (
 	"github.com/geckty/geckty/internal/config"
 	"github.com/geckty/geckty/internal/session"
 )
+
+// testSleepCommand returns argv for a short-lived, quiet placeholder
+// process — a cross-platform equivalent of "/bin/sh -c sleep 5": something
+// a PTY session can hold open for a test's duration without a real
+// interactive shell's prompt/rc-file output making behavior
+// nondeterministic. Used package-wide by tests that need a real spawned
+// process rather than a mock (see tabbar_paint_test.go's newTestTab too).
+func testSleepCommand() []string {
+	if runtime.GOOS == "windows" {
+		return []string{"powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 5"}
+	}
+	return []string{"/bin/sh", "-c", "sleep 5"}
+}
 
 func testUIState(t *testing.T) (*uiState, *fakeApp) {
 	t.Helper()
@@ -42,7 +56,7 @@ func testUIState(t *testing.T) (*uiState, *fakeApp) {
 
 func testWireCfg() *config.Config {
 	cfg := config.Default()
-	cfg.Shell.Command = []string{"/bin/sh", "-c", "sleep 5"}
+	cfg.Shell.Command = testSleepCommand()
 	return cfg
 }
 
@@ -149,7 +163,7 @@ func TestStartBlinkLoopTogglesAndStops(t *testing.T) {
 
 func TestWireSessionManagerQuitsWhenLastTabCloses(t *testing.T) {
 	s, app := testUIState(t)
-	if _, err := s.mgr.New(session.Config{Command: []string{"/bin/sh", "-c", "sleep 5"}, Cols: 80, Rows: 24}); err != nil {
+	if _, err := s.mgr.New(session.Config{Command: testSleepCommand(), Cols: 80, Rows: 24}); err != nil {
 		t.Fatalf("mgr.New: %v", err)
 	}
 	if err := s.mgr.CloseActive(); err != nil {

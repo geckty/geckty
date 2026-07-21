@@ -7,7 +7,7 @@ require (
 	github.com/creack/pty v1.1.18
 	github.com/danielgatis/go-vte v1.0.4
 	github.com/glaciforge/slogsafe v1.0.0
-	github.com/gogpu/gogpu v0.44.8
+	github.com/gogpu/gogpu v0.44.10
 	github.com/gogpu/gpucontext v0.21.1
 	github.com/mattn/go-runewidth v0.0.24
 	github.com/sasha-s/go-deadlock v0.3.9
@@ -24,7 +24,7 @@ require (
 	github.com/go-webgpu/webgpu v0.5.3 // indirect
 	github.com/gogpu/gputypes v0.5.1 // indirect
 	github.com/gogpu/naga v0.17.15 // indirect
-	github.com/gogpu/wgpu v0.30.21 // indirect
+	github.com/gogpu/wgpu v0.30.22 // indirect
 	github.com/lkmavi/saferefl v0.4.0 // indirect
 	github.com/petermattis/goid v0.0.0-20250813065127-a731cc31b4fe // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

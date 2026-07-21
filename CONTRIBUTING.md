@@ -8,7 +8,7 @@ Thank you for your interest in contributing to geckty!
 
 - **Go 1.26+**
 - **golangci-lint** for code quality checks
-- Linux: X11/Wayland/Vulkan headers (`pkg-config`, `libx11-dev`, `libxkbcommon-dev`, `libwayland-dev`, `libgles2-mesa-dev`, `libegl1-mesa-dev`, `libvulkan-dev`) — gio's GPU backend needs cgo
+- Linux: X11/Wayland/Vulkan headers (`pkg-config`, `libx11-dev`, `libxkbcommon-dev`, `libwayland-dev`, `libgles2-mesa-dev`, `libegl1-mesa-dev`, `libvulkan-dev`) for gogpu's GPU backend
 - Windows: ConPTY (Windows 10 1809+ / Windows 11) for the shell session
 
 ---
@@ -182,7 +182,7 @@ type(scope): description
 | `term` | Terminal emulation core |
 | `vt` | VT/ANSI state machine wrapper (internal/vt) |
 | `pty` | PTY / ConPTY process management |
-| `gio` | gio UI integration |
+| `ui` | gogpu window/rendering integration |
 | `tabs` | Tab/session management |
 | `config` | Configuration |
 | `wasm` | WASM plugin runtime |
@@ -203,7 +203,7 @@ geckty/
 │   ├── vt/                  # VT/ANSI state machine wrapper (cy/pkg/emu)
 │   ├── session/              # PTY + VT state bundled per tab, UI-agnostic
 │   ├── protocol/             # OSC52, Kitty keyboard/graphics, paste, focus, mouse
-│   ├── ui/                   # gio window, event loop, grid rendering
+│   ├── ui/                   # gogpu window, event loop, grid rendering
 │   ├── config/                # TOML configuration
 │   └── plugin/                # WASM plugin host
 └── scripts/                  # Build/release scripts

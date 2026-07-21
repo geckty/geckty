@@ -18,6 +18,7 @@ type Config struct {
 	Colors      ColorsConfig    `toml:"colors"`
 	Shell       ShellConfig     `toml:"shell"`
 	Selection   SelectionConfig `toml:"selection"`
+	TabBar      TabBarConfig    `toml:"tabbar"`
 	Keybindings []Keybinding    `toml:"keybindings"`
 	// Plugins lists directories, each containing a plugin.toml + its
 	// entry.wasm, to load at startup (see internal/plugin.Host). Empty by
@@ -76,7 +77,43 @@ type SelectionConfig struct {
 	WordChars string `toml:"word_chars"`
 }
 
-// Keybinding is one [[keybindings]] entry: Key is a gio key.Name value
+// TabBarConfig is the [tabbar] section, controlling the tab strip's own
+// visibility — independent of what it's showing (tab-title formatting
+// etc. isn't configurable here, only whether the strip and its "+" button
+// appear at all).
+type TabBarConfig struct {
+	// Hidden disables the tab bar entirely — no tab strip and no "+"
+	// button, regardless of ShowThreshold or PlusButton below, and
+	// regardless of how many tabs are open. Off by default.
+	Hidden bool `toml:"hidden"`
+	// ShowThreshold is the minimum number of open tabs before the tab
+	// strip (the row of tab pills) is shown, when not Hidden. Values below
+	// 1 behave as 1. Default 2: a single tab has nothing to switch
+	// between, so — matching Terminal.app/iTerm2's default — the strip
+	// only appears once a second tab exists.
+	ShowThreshold int `toml:"show_threshold"`
+	// PlusButton controls the "+" new-tab button's own visibility,
+	// independent of ShowThreshold above (e.g. keep "+" visible with a
+	// single tab open even though the tab strip itself stays hidden until
+	// a second one exists, or hide "+" entirely and rely on a keybinding
+	// for new_tab instead).
+	PlusButton PlusButtonConfig `toml:"plus_button"`
+}
+
+// PlusButtonConfig is the [tabbar.plus_button] section.
+type PlusButtonConfig struct {
+	// Hidden disables the "+" button entirely, regardless of ShowThreshold
+	// or how many tabs are open. Off by default.
+	Hidden bool `toml:"hidden"`
+	// ShowThreshold is the minimum number of open tabs before "+" is
+	// shown, when not Hidden (and TabBarConfig.Hidden is also false).
+	// Values below 1 behave as 1. Default 2, matching TabBarConfig's own
+	// default so both appear together at the same tab count unless
+	// configured otherwise.
+	ShowThreshold int `toml:"show_threshold"`
+}
+
+// Keybinding is one [[keybindings]] entry: Key is a gpucontext.Key name
 // ("T", "Tab", "["...), Mods is a set of "ctrl"/"shift"/"alt"/"cmd", and
 // Action is one of the action names internal/ui/input.Keymap understands
 // (e.g. "new_tab"). Unrecognized Key/Mods/Action values are rejected at

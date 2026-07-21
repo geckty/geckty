@@ -11,10 +11,12 @@
 package gogpu
 
 import (
+	"bytes"
 	"context"
 	"image"
 	"image/color"
 	"image/draw"
+	"image/png"
 	"log/slog"
 	"os"
 	"runtime"
@@ -25,6 +27,7 @@ import (
 	gogpulib "github.com/gogpu/gogpu"
 	"github.com/gogpu/gpucontext"
 
+	"github.com/geckty/geckty/assets"
 	"github.com/geckty/geckty/internal/config"
 	"github.com/geckty/geckty/internal/plugin"
 	"github.com/geckty/geckty/internal/protocol/focus"
@@ -185,6 +188,9 @@ func buildUIState(cfg *config.Config, palette theme.Palette, keymap *Keymap) (*u
 		// gogpu backend documents) — continuous render is the workaround.
 		// Re-verify against future gogpu releases.
 		WithContinuousRender(runtime.GOOS == osWindows)
+	if icon := loadAppIcon(); icon != nil {
+		appCfg = appCfg.WithIcon(icon)
+	}
 
 	gapp := gogpulib.NewApp(appCfg)
 	s := &uiState{
@@ -200,6 +206,21 @@ func buildUIState(cfg *config.Config, palette theme.Palette, keymap *Keymap) (*u
 	}
 	s.blinkOn.Store(true)
 	return s, gapp
+}
+
+// loadAppIcon decodes the embedded app icon (assets.Icon — see that
+// package's doc comment) for use as the window's taskbar/decoration icon.
+// Returns nil (leaving the window iconless rather than failing startup)
+// if the embedded bytes ever fail to decode — a "can't happen" case since
+// they're compiled in, not read from a runtime path, but not worth a
+// fatal error over a cosmetic feature if it ever did.
+func loadAppIcon() image.Image {
+	icon, err := png.Decode(bytes.NewReader(assets.Icon))
+	if err != nil {
+		slog.Warn("decode embedded app icon", slog.Any("error", err))
+		return nil
+	}
+	return icon
 }
 
 // wireSessionManager creates s.mgr and s.resizeDebouncer. The manager's
@@ -445,7 +466,7 @@ func (s *uiState) onDraw(ctx *gogpulib.Context) {
 	}
 	needFinalSync := s.consumeLiveResizeSync(inLiveResize)
 
-	tabBarH := dpToPx(TabBarHeightDp, scale)
+	tabBarH := s.tabBarHeightPx()
 	padPx := dpToPx(chromeContentPadDp, scale)
 	newCols, newRows := gridSize(image.Pt(fw-2*padPx, fh-tabBarH-2*padPx), s.cellW, s.cellH)
 
@@ -506,6 +527,9 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 	fillRect(s.frame, fw, 0, 0, fw, fh, bg)
 
 	tabs := s.mgr.Tabs()
+	if !s.tabBarShowTabs() {
+		tabs = nil
+	}
 	drag := chrome.DragVisual{
 		Active:   s.tabDrag.dragging,
 		From:     s.tabDrag.from,
@@ -515,7 +539,7 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 		TabID:    s.tabDrag.tabID,
 		HoverIdx: s.hoverTabIdx,
 	}
-	s.tabBar.Layout(s.frame, fw, fh, tabBarH, s.palette, tabs, s.mgr.ActiveID(), pluginStatusText(s.pluginHost), drag, s.hoverPlus)
+	s.tabBar.Layout(s.frame, fw, fh, tabBarH, s.palette, tabs, s.mgr.ActiveID(), pluginStatusText(s.pluginHost), drag, s.hoverPlus, s.tabBarShowPlus())
 
 	if active := s.mgr.Active(); active != nil {
 		s.painter.Paint(s.frame, fw, fh, padPx, tabBarH+padPx, active.Term, active.ScrollOffset(), gridSelection(active), gridPlacements(active), s.blinkOn.Load())

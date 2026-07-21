@@ -49,6 +49,50 @@ const (
 // fractional scale factors.
 func dpToPx(dp int, scale float64) int { return int(float64(dp)*scale + 0.5) }
 
+// tabBarShowTabs reports whether the tab strip (the row of tab pills)
+// should be shown for the current tab count, per cfg.TabBar. Callers that
+// need "0 tabs" for chrome.ComputeGeometry/hit-testing when this is false
+// just nil out the tabs slice they pass down — chrome's own numTabs<=0
+// path already draws/hit-tests as "no tabs", so no separate code path is
+// needed here.
+func (s *uiState) tabBarShowTabs() bool {
+	return tabBarSectionVisible(s.cfg.TabBar.Hidden, s.cfg.TabBar.ShowThreshold, len(s.mgr.Tabs()))
+}
+
+// tabBarShowPlus reports whether the "+" new-tab button should be shown
+// for the current tab count, per cfg.TabBar.PlusButton — independent of
+// tabBarShowTabs (see TabBarConfig's doc comment for why they're separate
+// knobs), but still gated by the tab bar's own top-level Hidden.
+func (s *uiState) tabBarShowPlus() bool {
+	hidden := s.cfg.TabBar.Hidden || s.cfg.TabBar.PlusButton.Hidden
+	return tabBarSectionVisible(hidden, s.cfg.TabBar.PlusButton.ShowThreshold, len(s.mgr.Tabs()))
+}
+
+func tabBarSectionVisible(hidden bool, threshold, numTabs int) bool {
+	if hidden {
+		return false
+	}
+	if threshold < 1 {
+		threshold = 1
+	}
+	return numTabs >= threshold
+}
+
+// tabBarHeightPx is the tab bar's actual on-screen height in device
+// pixels this frame: 0 when neither the tab strip nor the "+" button
+// should show (collapsing the row entirely so the grid reclaims that
+// space), otherwise the fixed TabBarHeightDp. Every place that needs to
+// know "is this device-pixel Y coordinate inside the tab bar" — onDraw's
+// layout and pointer.go's hit-testing alike — must go through this rather
+// than recomputing dpToPx(TabBarHeightDp, ...) directly, or a hidden bar
+// would still swallow clicks/scrolls in what's now grid space.
+func (s *uiState) tabBarHeightPx() int {
+	if !s.tabBarShowTabs() && !s.tabBarShowPlus() {
+		return 0
+	}
+	return dpToPx(TabBarHeightDp, s.scale)
+}
+
 // TabBar renders geckty's tab strip as direct pixel writes, reusing the old
 // chrome package's pure-Go geometry/hit-test functions (ComputeGeometry,
 // TabAtScrolledPinned, DropIndexByOverlap, VisualTabSlot, etc.) and its
@@ -138,13 +182,19 @@ func (tb *TabBar) measureText(s string) int {
 // being dragged, its horizontal offset, and the current drop-index preview)
 // and is the zero value when no drag is active. hoverPlus lightens the "+"
 // button's chip/cross when the pointer is over it, independent of activeID
-// or any tab hover state.
-func (tb *TabBar) Layout(buf []byte, frameW, frameH, barH int, pal theme.Palette, tabs []session.Tab, activeID int, statusText string, drag chrome.DragVisual, hoverPlus bool) {
+// or any tab hover state. showPlus controls the "+" button's own
+// visibility (see TabBarConfig.PlusButton) — tabs is the caller's whole
+// visibility lever for the tab strip itself: pass nil to paint/reserve no
+// tab pills regardless of how many sessions are actually open.
+func (tb *TabBar) Layout(buf []byte, frameW, frameH, barH int, pal theme.Palette, tabs []session.Tab, activeID int, statusText string, drag chrome.DragVisual, hoverPlus, showPlus bool) {
 	barBG := toRGBA(chrome.GlassFill(pal.Background, chrome.GlassBarLift))
 	fillRect(buf, frameW, 0, 0, frameW, barH, barBG)
 
 	minTabW := dpToPx(MinTabWidthDp, tb.Scale)
 	plusW := dpToPx(PlusWidthDp, tb.Scale)
+	if !showPlus {
+		plusW = 0
+	}
 	closeZoneW := dpToPx(CloseZoneWidthDp, tb.Scale)
 	inset := dpToPx(capsuleSegInDp, tb.Scale)
 

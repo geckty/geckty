@@ -5,21 +5,22 @@ import "sync"
 // osc52Bridge implements emu.OSC52Handler.
 //
 // Write: emu calls OSC52Write synchronously from Parse, which runs on the
-// PTY read goroutine — nowhere near gio's clipboard.WriteCmd, which can
-// only be executed from the UI goroutine during frame processing (it needs
-// a live layout.Context). So the write is stashed here instead of applied
-// directly; the UI layer drains it via Session.TakeClipboardWrite on its
-// next frame and performs the actual gtx.Execute(clipboard.WriteCmd{...}).
+// PTY read goroutine, not the UI goroutine. So the write is stashed here
+// instead of applied directly; the UI layer drains it via
+// Session.TakeClipboardWrite on its next frame and performs the actual
+// clipboard write (see internal/ui/gogpu/clipboard.go). gogpu's own
+// ClipboardWrite call is synchronous (unlike gio's old clipboard.WriteCmd,
+// which needed a live layout.Context on the UI goroutine) — this stash-and-
+// drain path predates that and hasn't been revisited against gogpu's
+// simpler clipboard API.
 //
 // Read (OSC 52 query — a program asking to read the OS clipboard through
 // the terminal): disabled unconditionally, matching kitty's default.
 // Letting arbitrary programs running in the terminal silently read the OS
 // clipboard is a real exfiltration risk (e.g. a compromised `curl | bash`
-// script reading a password you'd copied) — and even setting that aside,
-// gio's clipboard read is asynchronous (clipboard.ReadCmd delivers a later
-// transfer.DataEvent), which doesn't fit OSC52Read's synchronous contract
-// without a second, more complex hand-off. Both reasons point the same
-// way, so this isn't offered as a config toggle for now.
+// script reading a password you'd copied) — and that alone is reason
+// enough regardless of clipboard-read plumbing, so this isn't offered as a
+// config toggle for now.
 type osc52Bridge struct {
 	mu      sync.Mutex
 	pending []byte

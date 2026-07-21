@@ -21,9 +21,9 @@ size = 13
 #   "glass" — geckty's standard / default theme. Approximates macOS
 #             Terminal.app's dark "Pro" palette, paired with the tab bar's
 #             own software glass capsules (see internal/ui/chrome/glass.go).
-#             Colors only: gio has no window-transparency/blur API, so this
-#             can't reproduce Terminal.app's translucent chrome via real
-#             compositor blur.
+#             Colors only: gogpu's window API has no transparency/blur knob,
+#             so this can't reproduce Terminal.app's translucent chrome via
+#             real compositor blur.
 preset = "glass"
 
 # Leave the fields below commented when using a preset. Uncomment (and
@@ -53,11 +53,34 @@ preset = "glass"
 # style filenames like config.example.toml).
 word_chars = "._-"
 
+[tabbar]
+# hidden disables the tab bar entirely — no tab strip and no "+" button,
+# regardless of show_threshold/plus_button below or how many tabs are open.
+hidden = false
+# show_threshold is the minimum number of open tabs before the tab strip
+# (the row of tab pills) is shown. Default 2: a single tab has nothing to
+# switch between, so — matching Terminal.app/iTerm2 — the strip only
+# appears once a second tab exists. Set to 1 to always show it.
+show_threshold = 2
+
+[tabbar.plus_button]
+# "+" button visibility is independent of the tab strip's own
+# show_threshold above — e.g. keep "+" visible with a single tab open even
+# though the strip itself stays hidden until a second one exists, or hide
+# "+" entirely and rely on the new_tab keybinding instead.
+hidden = false
+show_threshold = 2
+
+# Loads plugin directories (each containing a plugin.toml + its entry.wasm)
+# at startup — see internal/plugin.Host. Empty by default: plugins are
+# strictly opt-in, like every other off-by-default feature in geckty.
+# plugins = ["/path/to/my-plugin"]
+
 # Defining any [[keybindings]] entries replaces ALL of the built-in
 # defaults, not just the ones listed — copy the defaults below and edit
 # them rather than adding a single override.
 #
-# key: a gio key.Name value ("A".."Z", "0".."9", "Tab", "[", "]", ...)
+# key: a gpucontext.Key name ("A".."Z", "0".."9", "Tab", "[", "]", ...)
 # mods: any of "ctrl", "shift", "alt", "cmd" (cmd is macOS-only)
 # action: "new_tab", "close_tab", "next_tab", "prev_tab", "copy", "paste"
 #

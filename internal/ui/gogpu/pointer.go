@@ -22,8 +22,8 @@ const (
 // terminal grid.
 func (s *uiState) handlePointerEvent(ev gpucontext.PointerEvent) {
 	x, y := s.toDevicePx(ev.X, ev.Y)
-	tabBarH := dpToPx(TabBarHeightDp, s.scale)
-	inTabBar := y < tabBarH
+	tabBarPx := s.tabBarHeightPx()
+	inTabBar := y < tabBarPx
 
 	handled := false
 	if s.tabDrag.pressed || inTabBar {
@@ -41,7 +41,6 @@ func (s *uiState) handlePointerEvent(ev gpucontext.PointerEvent) {
 	if active == nil {
 		return
 	}
-	tabBarPx := dpToPx(TabBarHeightDp, s.scale)
 	padPx := dpToPx(chromeContentPadDp, s.scale)
 	switch ev.Type {
 	case gpucontext.PointerDown:
@@ -65,8 +64,8 @@ func (s *uiState) toDevicePx(x, y float64) (int, int) {
 
 func (s *uiState) handleScrollEvent(ev gpucontext.ScrollEvent) {
 	x, y := s.toDevicePx(ev.X, ev.Y)
-	tabBarH := dpToPx(TabBarHeightDp, s.scale)
-	if y < tabBarH {
+	tabBarPx := s.tabBarHeightPx()
+	if y < tabBarPx {
 		s.handleTabBarScroll(ev)
 		return
 	}
@@ -74,7 +73,6 @@ func (s *uiState) handleScrollEvent(ev gpucontext.ScrollEvent) {
 	if active == nil {
 		return
 	}
-	tabBarPx := dpToPx(TabBarHeightDp, s.scale)
 	padPx := dpToPx(chromeContentPadDp, s.scale)
 	s.handleScroll(active, x, y, tabBarPx, padPx, ev.DeltaY)
 }
@@ -213,6 +211,9 @@ func (s *uiState) handleTabBarPointer(ev gpucontext.PointerEvent, x int) bool {
 
 	minTabW := dpToPx(MinTabWidthDp, s.scale)
 	plusW := dpToPx(PlusWidthDp, s.scale)
+	if !s.tabBarShowPlus() {
+		plusW = 0
+	}
 	closeZoneW := dpToPx(CloseZoneWidthDp, s.scale)
 	closeEdgePad := dpToPx(CloseEdgePadDp, s.scale)
 	thresh := dpToPx(tabDragThresholdDp, s.scale)
@@ -221,6 +222,9 @@ func (s *uiState) handleTabBarPointer(ev gpucontext.PointerEvent, x int) bool {
 	}
 
 	tabs := s.mgr.Tabs()
+	if !s.tabBarShowTabs() {
+		tabs = nil
+	}
 	g := chrome.ComputeGeometry(s.frameW, len(tabs), minTabW, plusW, closeZoneW)
 	maxScroll := chrome.ScrollMax(g, len(tabs))
 	if s.tabScrollX < 0 {
@@ -376,6 +380,9 @@ func (s *uiState) handleTabBarRelease(ev gpucontext.PointerEvent) bool {
 
 func (s *uiState) handleTabBarScroll(ev gpucontext.ScrollEvent) {
 	tabs := s.mgr.Tabs()
+	if !s.tabBarShowTabs() {
+		tabs = nil
+	}
 	minTabW := dpToPx(MinTabWidthDp, s.scale)
 	plusW := dpToPx(PlusWidthDp, s.scale)
 	closeZoneW := dpToPx(CloseZoneWidthDp, s.scale)

@@ -1,7 +1,7 @@
 # geckty
 
-A GUI terminal emulator written in Go, built on [gio](https://gioui.org) and
-[cy/pkg/emu](https://github.com/cfoust/cy) — in the spirit of kitty, Rio,
+A GUI terminal emulator written in Go, built on [gogpu](https://github.com/gogpu/gogpu)
+and [cy/pkg/emu](https://github.com/cfoust/cy) — in the spirit of kitty, Rio,
 and Alacritty.
 
 **Status:** early MVP under active development. See

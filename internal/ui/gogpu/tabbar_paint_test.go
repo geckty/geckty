@@ -16,7 +16,7 @@ import (
 func newTestTab(t *testing.T, id int, dir string) session.Tab {
 	t.Helper()
 	sess, err := session.New(session.Config{
-		Command: []string{"/bin/sh", "-c", "sleep 5"},
+		Command: testSleepCommand(),
 		Dir:     dir,
 		Cols:    80,
 		Rows:    24,
@@ -192,7 +192,7 @@ func TestLayoutPaintsTabsAndPlusButton(t *testing.T) {
 
 	buf := newBuf(400, 40)
 	drag := chrome.DragVisual{}
-	tb.Layout(buf, 400, 40, 32, pal, tabs, 1, "plugin status", drag, false)
+	tb.Layout(buf, 400, 40, 32, pal, tabs, 1, "plugin status", drag, false, true)
 
 	// Bar background should be painted (non-zero alpha somewhere in the
 	// bar strip that isn't covered by a tab pill or text).
@@ -221,5 +221,5 @@ func TestLayoutWithActiveDrag(t *testing.T) {
 	}
 	// Must not panic while a tab is mid-drag (exercises the two-pass
 	// paint order and the dragged-tab positioning branch).
-	tb.Layout(buf, 400, 40, 32, pal, tabs, 1, "", drag, true)
+	tb.Layout(buf, 400, 40, 32, pal, tabs, 1, "", drag, true, true)
 }

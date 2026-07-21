@@ -72,15 +72,16 @@ jobs:
           path: |
             bin/geckty-macos-amd64.dmg
 
-  # amd64-only: gio needs cgo (D3D11/ANGLE), and cross-compiling cgo to a
-  # *different* architecture than the build host needs a matching C
-  # cross-toolchain — unlike macOS (Xcode's clang natively targets both
-  # arm64 and x86_64 from either host), windows-latest's default mingw
-  # toolchain doesn't ship one for arm64 out of the box, and this project
-  # has no way to verify one it configured actually works (no Windows ARM
-  # CI access, no local Windows host at all — see the project plan's M10
-  # write-up). Dropped rather than shipped as an unverified guess; revisit
-  # once someone can actually test a Windows arm64 build.
+  # amd64-only: written when this project built on gio, which needed cgo
+  # (D3D11/ANGLE) — cross-compiling cgo to a *different* architecture than
+  # the build host needs a matching C cross-toolchain, and windows-latest's
+  # default mingw toolchain doesn't ship one for arm64 out of the box.
+  # gogpu (the current backend) advertises itself as cgo-free, so this
+  # constraint may no longer apply — unverified, since this project has no
+  # Windows ARM CI access or local Windows host to test a build with (see
+  # the project plan's M10 write-up). Dropped rather than shipped as an
+  # unverified guess either way; revisit once someone can actually test a
+  # Windows arm64 build.
   build-windows:
     name: Windows amd64
     runs-on: windows-latest
@@ -137,9 +138,9 @@ jobs:
           name: geckty-windows-${{ matrix.arch }}
           path: bin/geckty-${{ matrix.arch }}-installer.exe
 
-  # amd64-only for the same cgo cross-toolchain reason as build-windows
-  # above — ubuntu-latest doesn't ship an aarch64 cross-compiler by
-  # default, and gio needs cgo (X11/EGL) on Linux too.
+  # amd64-only for the same reason noted on build-windows above (written
+  # for gio's cgo requirement, unverified against gogpu) — ubuntu-latest
+  # doesn't ship an aarch64 cross-compiler by default either way.
   build-linux:
     name: Linux amd64
     runs-on: ubuntu-latest
@@ -156,7 +157,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Install gio build dependencies
+      - name: Install gogpu build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev

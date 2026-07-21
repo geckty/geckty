@@ -8,9 +8,10 @@ tasks:
     summary: Builds the macOS binary
     deps:
       - task: common:go:mod:tidy
-    # Deliberately no CGO_ENABLED=0: gio's Metal backend needs cgo on
-    # macOS, unlike a typical pure-Go release build — see ci.yml's
-    # equivalent comment and the project plan's "CI/release infra"
+    # Deliberately no CGO_ENABLED=0: written when this project's Metal
+    # backend was gio, which needed cgo on macOS. gogpu (the current
+    # backend) advertises itself as cgo-free, so this may no longer be
+    # necessary — unverified; see the project plan's "CI/release infra"
     # section.
     cmds:
       - |

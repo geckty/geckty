@@ -41,9 +41,10 @@ type selectionState struct {
 	has      bool
 	// complete is set once the selection represents something worth
 	// keeping on release: either a real drag happened (ExtendSelection
-	// was called at least once — it's only ever called from a pointer
-	// Drag event, which gio only fires on actual pointer movement, so
-	// this can't be set by a stationary click) or SelectWord produced
+	// was called at least once — it's only ever called from a
+	// gpucontext.PointerMove event, which only fires on actual pointer
+	// movement, so this can't be set by a stationary click) or SelectWord
+	// produced
 	// it directly. EndSelection uses this — not whether anchor still
 	// equals head — to decide whether to drop the selection: a
 	// single-character word from a double-click also has anchor==head,

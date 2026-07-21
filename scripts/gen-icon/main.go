@@ -3,10 +3,12 @@
 // assets/icon-1024.png, colored from the project's own default theme
 // (internal/config/defaults.go) rather than an arbitrary palette.
 //
-// This is a placeholder, not final design work — real icon art should
-// replace it (and assets/icon-1024.png) whenever that happens; run this
-// again first if defaults.go's palette ever changes and the icon should
-// track it.
+// Superseded: assets/icon.png (the gecko-over-a-terminal mark) is now the
+// real icon art, embedded at runtime (assets/assets.go) and used by
+// scripts/gen-icons.sh to build every packaged platform icon. This
+// generator and assets/icon-1024.png are kept only as the placeholder
+// this project shipped with before that art existed — not wired into the
+// build anymore.
 //
 // Run with: go run ./scripts/gen-icon
 package main

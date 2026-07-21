@@ -75,6 +75,52 @@ command = ["/bin/zsh", "-l"]
 	}
 }
 
+func TestDefaultTabBarShowsFromSecondTab(t *testing.T) {
+	d := Default()
+	if d.TabBar.Hidden || d.TabBar.PlusButton.Hidden {
+		t.Fatal("tab bar and plus button should not be hidden by default")
+	}
+	if d.TabBar.ShowThreshold != 2 {
+		t.Fatalf("TabBar.ShowThreshold = %d, want 2 (single tab shows no strip)", d.TabBar.ShowThreshold)
+	}
+	if d.TabBar.PlusButton.ShowThreshold != 2 {
+		t.Fatalf("TabBar.PlusButton.ShowThreshold = %d, want 2 (single tab shows no plus button)", d.TabBar.PlusButton.ShowThreshold)
+	}
+}
+
+func TestLoadOverridesTabBar(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	fixture := `
+[tabbar]
+hidden = false
+show_threshold = 3
+
+[tabbar.plus_button]
+hidden = true
+show_threshold = 1
+`
+	if err := os.WriteFile(path, []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.TabBar.Hidden {
+		t.Fatal("tabbar.hidden should be false")
+	}
+	if cfg.TabBar.ShowThreshold != 3 {
+		t.Fatalf("TabBar.ShowThreshold = %d, want 3", cfg.TabBar.ShowThreshold)
+	}
+	if !cfg.TabBar.PlusButton.Hidden {
+		t.Fatal("tabbar.plus_button.hidden should be true")
+	}
+	if cfg.TabBar.PlusButton.ShowThreshold != 1 {
+		t.Fatalf("TabBar.PlusButton.ShowThreshold = %d, want 1", cfg.TabBar.PlusButton.ShowThreshold)
+	}
+}
+
 func TestEnsureDefaultFileDoesNotOverwrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "geckty", "config.toml")
 	if err := EnsureDefaultFile(path); err != nil {

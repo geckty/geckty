@@ -9,14 +9,14 @@
 // keypress is indistinguishable from the start of any other escape
 // sequence in legacy encoding, and Ctrl+letter combos collide with
 // control characters like Tab/Enter/Backspace) and Report event types
-// (press/release; "repeat" is not implemented — gio's key.Event only
-// distinguishes Press/Release, with no OS-level autorepeat signal to key
+// (press/release; "repeat" is not implemented — gpucontext's key callbacks
+// only distinguish Press/Release, with no OS-level autorepeat signal to key
 // off of).
 //
 // Not implemented, deliberately: Report alternate keys (needs keyboard-
-// layout information — shifted/base-layout variants — that gio's
-// key.Event doesn't expose), Report all keys as escape codes (would
-// require suppressing/replacing the key.EditEvent-driven literal-text
+// layout information — shifted/base-layout variants — that gpucontext's
+// key events don't expose), Report all keys as escape codes (would
+// require suppressing/replacing the text-input-callback-driven literal-text
 // path entirely, a bigger architectural change than this pass), and
 // Report associated text (depends on Report all keys). Programs that
 // specifically require those flags will not get the enhanced behavior
@@ -32,14 +32,15 @@ import (
 	"github.com/geckty/geckty/internal/vt/emu"
 )
 
-// Key identifies a physical key. Values match gio's key.Name exactly (both
-// are plain strings) — callers pass string(ev.Name) directly; this package
-// doesn't import gio (only internal/ui does), so the functional-key glyphs
-// below are copied literals, not references to gio constants.
+// Key identifies a physical key, as a plain string. This package doesn't
+// import gpucontext (only internal/ui/gogpu does); callers map
+// gpucontext.Key values to these constants themselves (see
+// internal/ui/gogpu/kitty.go's kittyFunctionalKeys), so the glyphs below
+// are opaque wire-vocabulary literals, not references to gpucontext
+// constants.
 type Key string
 
-// Functional keys this package recognizes, with the exact string values
-// gio's key.Name uses for them.
+// Functional keys this package recognizes.
 const (
 	KeyLeftArrow      Key = "←"
 	KeyRightArrow     Key = "→"
@@ -110,7 +111,8 @@ var legacyBytes = map[Key]byte{
 }
 
 // Modifiers is a toolkit-agnostic modifier set, matching
-// internal/protocol/mouse's pattern — protocol packages don't import gio.
+// internal/protocol/mouse's pattern — protocol packages don't import
+// gpucontext (only internal/ui/gogpu does).
 type Modifiers uint8
 
 // Modifier bits.
@@ -123,9 +125,9 @@ const (
 
 func (m Modifiers) contain(o Modifiers) bool { return m&o == o }
 
-// kittyModifierBits per the spec: shift=1, alt=2, ctrl=4, super=8 (hyper,
-// meta, caps_lock, num_lock exist in the spec but have no equivalent in
-// gio's key.Modifiers, so are never set here).
+// kittyModifierBits per the spec: shift=1, alt=2, ctrl=4, super=8 (hyper and
+// meta exist in the spec but have no equivalent in gpucontext.Modifiers, so
+// are never set here).
 func kittyModifierBits(mods Modifiers) int {
 	var b int
 	if mods.contain(ModShift) {
@@ -193,9 +195,11 @@ func Encode(flags emu.KeyProtocol, ev Event) (out []byte, ok bool) {
 	// Ctrl+A collides with the control character 0x01, and legacy
 	// encoding can't tell "Ctrl+A" apart from "the byte 0x01" the way
 	// CSI-u can. A plain, unmodified (or shift-only) letter isn't
-	// ambiguous and should keep going through key.EditEvent as normal
-	// text, which correctly reflects case/layout in a way this package
-	// can't (gio's key.Name is always upper-case per its own doc).
+	// ambiguous and should keep going through the toolkit's text-input
+	// callback as normal text, which correctly reflects case/layout in a
+	// way this package can't (gpucontext.Key is purely positional — see
+	// internal/ui/gogpu/keymap.go's doc comment — with no case or layout
+	// information of its own).
 	r := []rune(string(ev.Key))
 	if len(r) != 1 {
 		return nil, false
