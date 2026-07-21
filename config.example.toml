@@ -76,6 +76,10 @@ show_threshold = 2
 # strictly opt-in, like every other off-by-default feature in geckty.
 # plugins = ["/path/to/my-plugin"]
 
+# Minimum severity geckty logs: "debug", "info", "warn", or "error"
+# (case-insensitive). The -log-level flag overrides this when set.
+log_level = "error"
+
 # Defining any [[keybindings]] entries replaces ALL of the built-in
 # defaults, not just the ones listed — copy the defaults below and edit
 # them rather than adding a single override.

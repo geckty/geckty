@@ -26,6 +26,10 @@ type Config struct {
 	// off-by-default feature in geckty (e.g. OSC 52 clipboard read) is
 	// handled: no behavior change unless a user asks for it.
 	Plugins []string `toml:"plugins"`
+	// LogLevel sets the minimum severity geckty logs, one of "debug",
+	// "info", "warn", or "error" (case-insensitive). See ParseLogLevel.
+	// The -log-level flag (cmd/geckty/main.go) overrides this when set.
+	LogLevel string `toml:"log_level"`
 }
 
 // WindowConfig is the [window] section: initial window size.

@@ -2,10 +2,8 @@
 # Generates every platform's packaged app icon from assets/icon.png (the
 # real geckty mark — a gecko peeking over a terminal prompt), also embedded
 # at runtime as the window icon (see assets/assets.go and
-# internal/ui/gogpu/app.go's loadAppIcon). scripts/gen-icon's programmatic
-# placeholder (assets/icon-1024.png) predates this and is superseded by it
-# — see that command's doc comment. Requires macOS's sips/iconutil (used
-# for resizing and .icns packing); run this on a Mac, not in CI, and
+# internal/ui/gogpu/app.go's loadAppIcon). Requires macOS's sips/iconutil
+# (used for resizing and .icns packing); run this on a Mac, not in CI, and
 # commit the results — build/{darwin,windows}/*.ic{ns,o} are checked in,
 # not regenerated at build time.
 set -euo pipefail

@@ -68,7 +68,7 @@ func TestTabBarVisibilityDefaultsHideAtOneTab(t *testing.T) {
 
 func TestTabBarPlusButtonVisibilityIsIndependentOfStrip(t *testing.T) {
 	s, _ := testUIState(t)
-	s.cfg.TabBar.ShowThreshold = 3           // keep the tab strip hidden longer...
+	s.cfg.TabBar.ShowThreshold = 3            // keep the tab strip hidden longer...
 	s.cfg.TabBar.PlusButton.ShowThreshold = 1 // ...while "+" shows from the very first tab.
 	addTab(t, s)
 

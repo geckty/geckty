@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -176,6 +177,56 @@ func TestDefaultKeybindingsNonEmpty(t *testing.T) {
 	}
 	if len(wantActions) != 0 {
 		t.Fatalf("default keybindings missing actions: %v", wantActions)
+	}
+}
+
+func TestDefaultLogLevelIsError(t *testing.T) {
+	if Default().LogLevel != "error" {
+		t.Fatalf("Default().LogLevel = %q, want %q", Default().LogLevel, "error")
+	}
+}
+
+func TestLoadOverridesLogLevel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(`log_level = "debug"`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.LogLevel != "debug" {
+		t.Fatalf("LogLevel = %q, want %q", cfg.LogLevel, "debug")
+	}
+}
+
+func TestParseLogLevel(t *testing.T) {
+	cases := map[string]slog.Level{
+		"debug":   slog.LevelDebug,
+		"DEBUG":   slog.LevelDebug,
+		"info":    slog.LevelInfo,
+		"warn":    slog.LevelWarn,
+		"warning": slog.LevelWarn,
+		"error":   slog.LevelError,
+		"Error":   slog.LevelError,
+	}
+	for in, want := range cases {
+		got, err := ParseLogLevel(in)
+		if err != nil {
+			t.Fatalf("ParseLogLevel(%q): %v", in, err)
+		}
+		if got != want {
+			t.Fatalf("ParseLogLevel(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestParseLogLevelRejectsUnknown(t *testing.T) {
+	for _, in := range []string{"", "verbose", "trace"} {
+		if _, err := ParseLogLevel(in); err == nil {
+			t.Fatalf("ParseLogLevel(%q): expected error, got nil", in)
+		}
 	}
 }
 

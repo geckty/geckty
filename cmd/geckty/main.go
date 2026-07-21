@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log/slog"
 	"os"
 
@@ -14,19 +15,26 @@ import (
 )
 
 func main() {
-	// Dev() (text format, debug level) rather than Default() (JSON):
-	// geckty is desktop software a user typically launches by double-
-	// clicking, not a server — when its log output does get seen (run
-	// from a terminal to debug something, or piped to a file), a human-
-	// readable text format serves that better than structured JSON aimed
-	// at a log aggregator. This is the only place in geckty that
-	// constructs a *slogsafe.Logger directly (for FatalContext, which
-	// isn't part of stdlib log/slog); everywhere else in the codebase
-	// uses the standard log/slog package-level functions, which
-	// SetupDefault wires to this same logger via slog.SetDefault.
+	logLevelFlag := flag.String("log-level", "", "log level: debug, info, warn, or error (overrides config's log_level)")
+	flag.Parse()
+
+	// Dev()'s text format (rather than Default()'s JSON) since geckty is
+	// desktop software a user typically launches by double-clicking, not
+	// a server — when its log output does get seen (run from a terminal
+	// to debug something, or piped to a file), a human-readable text
+	// format serves that better than structured JSON aimed at a log
+	// aggregator. The initial level is a placeholder: config.Default()'s
+	// "error", so config-loading errors below aren't swallowed before
+	// the real level (from config or -log-level) is known and applied via
+	// SetLevel — slogsafe.Logger swaps its level atomically, so this
+	// doesn't require rebuilding the logger. This is the only place in
+	// geckty that constructs a *slogsafe.Logger directly (for
+	// FatalContext, which isn't part of stdlib log/slog); everywhere else
+	// in the codebase uses the standard log/slog package-level functions,
+	// which SetupDefault wires to this same logger via slog.SetDefault.
 	log := slogsafe.SetupDefault(
 		slogsafe.WithFormat(slogsafe.FormatText),
-		slogsafe.WithLevel(slog.LevelDebug),
+		slogsafe.WithLevel(slog.LevelError),
 	)
 	ctx := context.Background()
 
@@ -41,6 +49,16 @@ func main() {
 	if err != nil {
 		log.FatalContext(ctx, "load config", slogsafe.Err(err))
 	}
+
+	logLevelSrc := cfg.LogLevel
+	if *logLevelFlag != "" {
+		logLevelSrc = *logLevelFlag
+	}
+	logLevel, err := config.ParseLogLevel(logLevelSrc)
+	if err != nil {
+		log.FatalContext(ctx, "parse log level", slogsafe.Err(err))
+	}
+	log.SetLevel(logLevel)
 
 	// Run through the Backend interface, not the concrete Run function
 	// directly — main.go doesn't need to know the UI toolkit, only that

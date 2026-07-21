@@ -24,6 +24,11 @@ func Default() *Config {
 			PlusButton:    PlusButtonConfig{ShowThreshold: 2},
 		},
 		Keybindings: defaultKeybindings(),
+		// "error": geckty is desktop software, not a service someone
+		// tails logs of by default — stay quiet unless something's
+		// actually gone wrong. Raise via log_level or -log-level to
+		// debug a specific issue.
+		LogLevel: "error",
 	}
 }
 

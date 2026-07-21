@@ -6,9 +6,7 @@ package assets
 import _ "embed"
 
 // Icon is geckty's app icon (see icon.png — the gecko-over-a-terminal
-// mark; assets/icon-1024.png and scripts/gen-icon's programmatic
-// placeholder predate this and are superseded by it), embedded as raw PNG
-// bytes. Decode with image/png before use.
+// mark), embedded as raw PNG bytes. Decode with image/png before use.
 //
 //go:embed icon.png
 var Icon []byte

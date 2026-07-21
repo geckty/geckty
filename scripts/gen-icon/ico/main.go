@@ -3,7 +3,7 @@
 // each directory entry's image data is a complete, unmodified PNG file,
 // rather than the older uncompressed BMP format). Used by
 // scripts/gen-icons.sh to build build/windows/icon.ico from the PNGs
-// scripts/gen-icon + sips produce; not a general-purpose ICO tool.
+// sips produces from assets/icon.png; not a general-purpose ICO tool.
 //
 // Usage: go run ./scripts/gen-icon/ico -out icon.ico icon-16.png icon-32.png ...
 package main
