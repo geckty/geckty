@@ -33,24 +33,59 @@ type Placement struct {
 
 // Painter renders a vt.Terminal's screen as RGBA pixels into a caller-owned
 // buffer. Unlike the old gio-based grid.Painter, it does not measure its
-// own cell metrics from a live frame context — Face/CellWidth/CellHeight/
+// own cell metrics from a live frame context — Fonts/CellWidth/CellHeight/
 // Ascent are computed once by loadFontBundle (see font.go) and kept in sync
 // by the caller (app.go) across font/DPI changes.
 type Painter struct {
 	Palette    theme.Palette
-	Face       font.Face
+	Fonts      fontBundle
 	CellWidth  int
 	CellHeight int
 	Ascent     int
 
-	atlas *glyphAtlas
+	// atlases[styleIndex(bold,italic)] caches that style's glyph
+	// rasterizations; index 0 (regular) is always populated once Fonts is,
+	// the other three only when Fonts has a dedicated face for them (see
+	// faceAndAtlas's fallback when it doesn't).
+	atlases [4]*glyphAtlas
 }
 
-// ensureAtlas (re)creates the glyph atlas when the face or ascent changed.
-func (p *Painter) ensureAtlas() {
-	if !p.atlas.valid(p.Face, p.Ascent) {
-		p.atlas = newGlyphAtlas(p.Face, p.Ascent)
+// styleIndex maps a cell's bold/italic attributes to a slot in
+// Painter.atlases (and the equivalent face in fontBundle.face).
+func styleIndex(bold, italic bool) int {
+	switch {
+	case bold && italic:
+		return 3
+	case bold:
+		return 1
+	case italic:
+		return 2
+	default:
+		return 0
 	}
+}
+
+// ensureAtlas (re)creates each style's glyph atlas when its face or the
+// shared ascent changed.
+func (p *Painter) ensureAtlas() {
+	faces := [4]font.Face{p.Fonts.regular, p.Fonts.bold, p.Fonts.italic, p.Fonts.boldItalic}
+	for i, f := range faces {
+		if f == nil {
+			continue
+		}
+		if !p.atlases[i].valid(f, p.Ascent) {
+			p.atlases[i] = newGlyphAtlas(f, p.Ascent)
+		}
+	}
+}
+
+// faceAndAtlas returns the face and atlas for a cell's bold/italic
+// attributes, delegating to fontBundle.face for which style (falling back
+// to regular when Fonts has no dedicated face for the requested one) so
+// the two never disagree about which face is "in use".
+func (p *Painter) faceAndAtlas(bold, italic bool) (font.Face, *glyphAtlas) {
+	face, idx := p.Fonts.face(bold, italic)
+	return face, p.atlases[idx]
 }
 
 // Paint fills the grid's rect (originX,originY)-(originX+cols*CellWidth,
@@ -150,10 +185,14 @@ func viewport(term *vt.Terminal, rows, scrollOffset int) (lines []emu.Line, top 
 }
 
 type cellStyle struct {
-	fg, bg    emu.Color
-	bold      bool
-	italic    bool
-	underline bool
+	fg, bg        emu.Color
+	bold          bool
+	italic        bool
+	underline     bool
+	underlineMode emu.UnderlineMode
+	strikethrough bool
+	dim           bool
+	invisible     bool
 }
 
 func styleOf(g emu.Glyph) cellStyle {
@@ -162,11 +201,15 @@ func styleOf(g emu.Glyph) cellStyle {
 		fg, bg = bg, fg
 	}
 	return cellStyle{
-		fg:        fg,
-		bg:        bg,
-		bold:      g.Mode&emu.AttrBold != 0,
-		italic:    g.Mode&emu.AttrItalic != 0,
-		underline: g.Underline.Mode != emu.UnderlineNone,
+		fg:            fg,
+		bg:            bg,
+		bold:          g.Mode&emu.AttrBold != 0,
+		italic:        g.Mode&emu.AttrItalic != 0,
+		underline:     g.Underline.Mode != emu.UnderlineNone,
+		underlineMode: g.Underline.Mode,
+		strikethrough: g.Mode&emu.AttrStrikethrough != 0,
+		dim:           g.Mode&emu.AttrDim != 0,
+		invisible:     g.Mode&emu.AttrInvisible != 0,
 	}
 }
 
@@ -175,10 +218,10 @@ func styleOf(g emu.Glyph) cellStyle {
 // wide serif) without letting it bleed into the next cell over.
 const glyphBleedPx = 3
 
-// paintRow paints each cell at its fixed grid X. Unlike the old gio
-// renderer, bold/italic are not yet applied to the glyph rasterization
-// (the atlas caches one regular-weight rasterization per rune) — see the
-// "bold/italic faces" follow-up note in font.go.
+// paintRow paints each cell at its fixed grid X, rasterizing bold/italic
+// cells from Fonts' dedicated bold/italic/boldItalic faces when the config
+// enabled them (see ensureFonts) and Fonts actually has one — otherwise
+// faceAndAtlas falls back to the regular face/atlas.
 func (p *Painter) paintRow(buf []byte, frameW, frameH int, line emu.Line, cols, originX, y int) {
 	y1 := y + p.CellHeight
 	for col := 0; col < cols; {
@@ -201,25 +244,72 @@ func (p *Painter) paintRow(buf []byte, frameW, frameH int, line emu.Line, cols, 
 		st := styleOf(g)
 		fgColor := toRGBA(p.Palette.Resolve(st.fg))
 		bgColor := toRGBA(p.Palette.Resolve(st.bg))
+		if st.dim {
+			fgColor = dimRGBA(fgColor, bgColor)
+		}
 
 		if bgColor != toRGBA(p.Palette.Background) {
 			fillRect(buf, frameW, x0, y, x1, y1, bgColor)
 		}
 
-		if g.Char != ' ' {
-			if e, ok := p.atlas.get(g.Char); ok {
-				dr := e.drRel.Add(image.Pt(x0, y))
-				blitGlyphClipped(buf, frameW, frameH, dr, e.mask, e.maskp, fgColor, x0-glyphBleedPx, y, x1+glyphBleedPx, y1)
+		if !st.invisible && g.Char != ' ' {
+			if _, atlas := p.faceAndAtlas(st.bold, st.italic); atlas != nil {
+				if e, ok := atlas.get(g.Char); ok {
+					dr := e.drRel.Add(image.Pt(x0, y))
+					blitGlyphClipped(buf, frameW, frameH, dr, e.mask, e.maskp, fgColor, x0-glyphBleedPx, y, x1+glyphBleedPx, y1)
+				}
 			}
 		}
 
 		if st.underline {
-			const thickness = 1
-			uy := y1 - thickness
-			fillRect(buf, frameW, x0, uy, x1, uy+thickness, fgColor)
+			paintUnderline(buf, frameW, x0, x1, y1, st.underlineMode, fgColor)
+		}
+		if st.strikethrough {
+			sy := y + p.CellHeight/2
+			fillRect(buf, frameW, x0, sy, x1, sy+1, fgColor)
 		}
 
 		col += w
+	}
+}
+
+func dimRGBA(fg, bg color.RGBA) color.RGBA {
+	return color.RGBA{
+		R: uint8((int(fg.R) + int(bg.R)) / 2),
+		G: uint8((int(fg.G) + int(bg.G)) / 2),
+		B: uint8((int(fg.B) + int(bg.B)) / 2),
+		A: fg.A,
+	}
+}
+
+func paintUnderline(buf []byte, frameW, x0, x1, y1 int, mode emu.UnderlineMode, fg color.RGBA) {
+	const thickness = 1
+	uy := y1 - thickness
+	switch mode {
+	case emu.UnderlineDouble:
+		fillRect(buf, frameW, x0, uy, x1, uy+thickness, fg)
+		fillRect(buf, frameW, x0, uy-2, x1, uy-2+thickness, fg)
+	case emu.UnderlineDotted:
+		for x := x0; x < x1; x += 2 {
+			xe := x + 1
+			if xe > x1 {
+				xe = x1
+			}
+			fillRect(buf, frameW, x, uy, xe, uy+thickness, fg)
+		}
+	case emu.UnderlineDashed:
+		for x := x0; x < x1; x += 4 {
+			xe := x + 2
+			if xe > x1 {
+				xe = x1
+			}
+			fillRect(buf, frameW, x, uy, xe, uy+thickness, fg)
+		}
+	case emu.UnderlineCurly:
+		// Approximate curly as a thicker single line for now.
+		fillRect(buf, frameW, x0, uy-1, x1, uy+thickness, fg)
+	default:
+		fillRect(buf, frameW, x0, uy, x1, uy+thickness, fg)
 	}
 }
 

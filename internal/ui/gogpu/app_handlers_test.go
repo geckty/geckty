@@ -2,6 +2,7 @@ package gogpu
 
 import (
 	"testing"
+	"time"
 
 	"github.com/gogpu/gpucontext"
 
@@ -11,7 +12,8 @@ import (
 func testUIStateWithTab(t *testing.T) (*uiState, *fakeApp) {
 	t.Helper()
 	s, app := testUIState(t)
-	if err := s.wireFirstTab(testWireCfg(), app); err != nil {
+	s.cfg = testWireCfg()
+	if err := s.wireFirstTab(app); err != nil {
 		t.Fatalf("wireFirstTab: %v", err)
 	}
 	t.Cleanup(func() { _ = s.mgr.CloseActive() })
@@ -86,8 +88,8 @@ func TestHandleKeyPressShortcutTakesPrecedence(t *testing.T) {
 	s.keymap = keymap
 
 	s.handleKeyPress(gpucontext.KeyT, gpucontext.ModControl|gpucontext.ModShift)
-	if !s.keyHandled {
-		t.Fatal("a matched shortcut should set keyHandled")
+	if s.keyEcho != "T" {
+		t.Fatalf("a matched shortcut should set keyEcho to its base char, got %q", s.keyEcho)
 	}
 	if len(s.mgr.Tabs()) != before+1 {
 		t.Fatalf("tabs after shortcut = %d, want %d", len(s.mgr.Tabs()), before+1)
@@ -103,23 +105,44 @@ func TestHandleKeyPressFallsThroughToEncoding(t *testing.T) {
 	s.keymap = keymap
 
 	s.handleKeyPress(gpucontext.KeyEnter, 0)
-	if !s.keyHandled {
-		t.Fatal("Enter should be encoded and set keyHandled")
+	// Enter is a control encoding — must not stick a keyEcho that can
+	// swallow later IME/layout text.
+	if s.keyEcho != "" {
+		t.Fatalf("Enter must not leave a sticky keyEcho, got %q", s.keyEcho)
 	}
 }
 
-func TestHandleTextInputSuppressedAfterKeyHandled(t *testing.T) {
+func TestHandleTextInputSuppressesOnlyAMatchingEcho(t *testing.T) {
 	s, _ := testUIStateWithTab(t)
-	s.keyHandled = true
+	s.keyEcho = "x"
 	s.handleTextInput("x")
-	if s.keyHandled {
-		t.Fatal("handleTextInput should clear keyHandled after suppressing")
+	if s.keyEcho != "" {
+		t.Fatal("handleTextInput should clear keyEcho after consuming a matching echo")
 	}
 }
 
-func TestHandleTextInputEmptyIsNoop(t *testing.T) {
+func TestHandleTextInputDeliversMismatchedTextDespiteStaleEcho(t *testing.T) {
+	// The actual bug this guards against: a stale keyEcho left over from
+	// an unrelated key (e.g. Enter) must never swallow real text that
+	// doesn't match it — composed/IME text arriving shortly after an
+	// unrelated control key used to be dropped just because *some* key was
+	// recently "handled" (see keyEcho's doc comment).
 	s, _ := testUIStateWithTab(t)
-	s.handleTextInput("") // must not panic
+	s.keyEcho = "\r"
+	s.handleTextInput("й") // must not panic; must be written, not swallowed
+	if s.keyEcho != "" {
+		t.Fatal("handleTextInput should still clear a stale, non-matching keyEcho")
+	}
+}
+
+func TestHandleTextInputStaleEchoTTLDoesNotSwallow(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	s.keyEcho = "a"
+	s.keyEchoAt = time.Now().Add(-time.Second) // expired
+	s.handleTextInput("a")
+	if s.keyEcho != "" {
+		t.Fatal("expired keyEcho must be cleared")
+	}
 }
 
 func TestHandleTextInputWritesToActiveSession(t *testing.T) {

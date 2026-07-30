@@ -33,8 +33,8 @@ func NewPalette(cfg config.ColorsConfig) (Palette, error) {
 			return Palette{}, fmt.Errorf("colors.selection: %w", err)
 		}
 	} else {
-		// Fallback: Terminal Pro-like mid-grey when the config predates
-		// the selection field.
+		// Fallback: an opaque mid-grey when the config predates the
+		// selection field.
 		p.Selection = color.NRGBA{R: 0x52, G: 0x52, B: 0x52, A: 0xff}
 	}
 	for i, s := range cfg.ANSI {

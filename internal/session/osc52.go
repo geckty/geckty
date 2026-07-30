@@ -1,73 +1,108 @@
 package session
 
-import "sync"
+import (
+	"log/slog"
+	"strings"
+	"sync"
+)
+
+// ClipboardPolicy controls OSC 52 read/write behaviour (see config [clipboard]).
+type ClipboardPolicy struct {
+	WriteAllow bool
+	ReadAllow  bool
+	MaxSize    int // bytes; 0 means use defaultMaxOSC52
+}
+
+const defaultMaxOSC52 = 5 << 20
 
 // osc52Bridge implements emu.OSC52Handler.
 //
-// Write: emu calls OSC52Write synchronously from Parse, which runs on the
-// PTY read goroutine, not the UI goroutine. So the write is stashed here
-// instead of applied directly; the UI layer drains it via
-// Session.TakeClipboardWrite on its next frame and performs the actual
-// clipboard write (see internal/ui/gogpu/clipboard.go). gogpu's own
-// ClipboardWrite call is synchronous (unlike gio's old clipboard.WriteCmd,
-// which needed a live layout.Context on the UI goroutine) — this stash-and-
-// drain path predates that and hasn't been revisited against gogpu's
-// simpler clipboard API.
+// Write: emu calls OSC52Write synchronously from Parse (PTY read goroutine).
+// The payload is stashed; the UI drains via Session.TakeClipboardWrite.
 //
-// Read (OSC 52 query — a program asking to read the OS clipboard through
-// the terminal): disabled unconditionally, matching kitty's default.
-// Letting arbitrary programs running in the terminal silently read the OS
-// clipboard is a real exfiltration risk (e.g. a compromised `curl | bash`
-// script reading a password you'd copied) — and that alone is reason
-// enough regardless of clipboard-read plumbing, so this isn't offered as a
-// config toggle for now.
+// Read: denied unless ReadAllow is set (exfiltration risk; kitty default).
 type osc52Bridge struct {
 	mu      sync.Mutex
 	pending []byte
+	// clearPending is set when an empty OSC 52 write should clear the OS clipboard.
+	clearPending bool
+	policy       ClipboardPolicy
+	log          *slog.Logger
 }
 
-func newOSC52Bridge() *osc52Bridge {
-	return &osc52Bridge{}
+func newOSC52Bridge(policy ClipboardPolicy, log *slog.Logger) *osc52Bridge {
+	if policy.MaxSize <= 0 {
+		policy.MaxSize = defaultMaxOSC52
+	}
+	if log == nil {
+		log = slog.Default()
+	}
+	return &osc52Bridge{policy: policy, log: log}
 }
 
-// OSC52Write implements emu.OSC52Handler. pc is ignored — emu only ever
-// calls this with pc == "c" (it filters everything else itself before
-// dispatching, per handleOSC52).
-//
-// Does not call onDirty: OSC52Write only ever runs synchronously from
-// within Term.Parse, which Session.Run always calls inside the same
-// `n > 0` block that unconditionally calls onDirty afterward — an onDirty
-// call here would just double-fire it for every OSC 52 write. Found while
-// adding M8's Kitty-graphics handleAPC, which had the identical bug (see
-// its doc comment in graphics.go) — this is the same fix applied here too.
+// OSC52Write implements emu.OSC52Handler.
 func (b *osc52Bridge) OSC52Write(_ string, data []byte) {
+	const op = "session.OSC52Write"
+	if !b.policy.WriteAllow {
+		b.log.Debug(op, slog.String("result", "denied"))
+		return
+	}
 	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(data) == 0 {
+		b.pending = nil
+		b.clearPending = true
+		return
+	}
+	if len(data) > b.policy.MaxSize {
+		b.log.Warn(op, slog.String("result", "too_large"), slog.Int("bytes", len(data)), slog.Int("max", b.policy.MaxSize))
+		return
+	}
+	b.clearPending = false
 	b.pending = append([]byte(nil), data...)
-	b.mu.Unlock()
 }
 
-// OSC52Read implements emu.OSC52Handler. Always declines — see the type
-// doc comment.
+// OSC52Read implements emu.OSC52Handler.
 func (b *osc52Bridge) OSC52Read(_ string) ([]byte, bool) {
+	if !b.policy.ReadAllow {
+		return nil, false
+	}
+	// ReadAllow is reserved for a future UI-confirmed clipboard read path.
+	// Until then, never return host clipboard data from the PTY goroutine.
 	return nil, false
 }
 
-// take atomically takes and clears the pending clipboard write, if any.
-func (b *osc52Bridge) take() ([]byte, bool) {
+func (b *osc52Bridge) take() (data []byte, clear bool, ok bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.pending == nil {
-		return nil, false
+	if b.clearPending {
+		b.clearPending = false
+		b.pending = nil
+		return nil, true, true
 	}
-	data := b.pending
+	if b.pending == nil {
+		return nil, false, false
+	}
+	data = b.pending
 	b.pending = nil
-	return data, true
+	return data, false, true
 }
 
-// TakeClipboardWrite atomically takes and clears any pending OSC 52
-// clipboard write the shell sent (see osc52Bridge), for the UI layer to
-// hand off to the OS clipboard. Returns ok=false if there's nothing
-// pending — the common case, checked once per frame.
-func (s *Session) TakeClipboardWrite() ([]byte, bool) {
+// TakeClipboardWrite drains a pending OSC 52 write or clear for the UI.
+// clear=true means the OS clipboard should be emptied; data may be empty.
+func (s *Session) TakeClipboardWrite() (data []byte, clear bool, ok bool) {
 	return s.osc52.take()
+}
+
+// ParseClipboardPolicy maps config strings to a ClipboardPolicy.
+func ParseClipboardPolicy(write, read string, maxSize int) ClipboardPolicy {
+	p := ClipboardPolicy{
+		WriteAllow: !strings.EqualFold(strings.TrimSpace(write), "deny"),
+		ReadAllow:  strings.EqualFold(strings.TrimSpace(read), "allow"),
+		MaxSize:    maxSize,
+	}
+	if p.MaxSize <= 0 {
+		p.MaxSize = defaultMaxOSC52
+	}
+	return p
 }

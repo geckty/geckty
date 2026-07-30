@@ -11,7 +11,7 @@ const glassPresetName = "glass"
 // presets maps a ColorsConfig.Preset name to a full color set. Selecting
 // a preset replaces Foreground/Background/ANSI (no field-level merge).
 var presets = map[string]ColorsConfig{
-	// Default dark "Pro"-like palette for the glass chrome theme.
+	// Default dark palette for the glass chrome theme.
 	glassPresetName: {
 		Foreground: "#f4f4f4",
 		Background: "#1d1f22",

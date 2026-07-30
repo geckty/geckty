@@ -20,6 +20,11 @@ const (
 	AttrWrap
 	AttrBlank
 	AttrTransparent
+	// AttrDim/Invisible/Overline use bits after the legacy Opaque slot in
+	// state.go (bit 9) so Mode values stay aligned across packages.
+	AttrDim       = 1 << 10
+	AttrInvisible = 1 << 11
+	AttrOverline  = 1 << 12
 )
 
 type UnderlineMode uint8

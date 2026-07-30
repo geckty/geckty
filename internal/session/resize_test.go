@@ -8,7 +8,7 @@ import (
 
 func TestSessionResize(t *testing.T) {
 	p := newFakePTY()
-	s := newWithPTY(p, 10, 2, nil, nil)
+	s := newTestSession(p, 10, 2, nil, nil)
 	defer func() { _ = s.Close() }()
 
 	if err := s.Resize(20, 5); err != nil {
@@ -33,7 +33,7 @@ func TestSessionResize(t *testing.T) {
 func TestTerminalRepliesRouteThroughSessionWrite(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 10, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} }, nil)
 	defer func() { _ = s.Close() }()
 
 	go s.Run()

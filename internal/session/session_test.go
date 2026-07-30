@@ -56,7 +56,7 @@ func (f *fakePTY) Close() error {
 func TestSessionParsesShellOutput(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 10, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} }, nil)
 
 	go s.Run()
 
@@ -82,7 +82,7 @@ func TestSessionParsesShellOutput(t *testing.T) {
 
 func TestSessionWriteIsGuarded(t *testing.T) {
 	p := newFakePTY()
-	s := newWithPTY(p, 10, 2, nil, nil)
+	s := newTestSession(p, 10, 2, nil, nil)
 
 	const n = 50
 	var wg sync.WaitGroup
@@ -116,8 +116,8 @@ func TestManagerLifecycle(t *testing.T) {
 
 	// Manager.New spawns via the real pty.Open (not the fake), so this
 	// test only exercises tab bookkeeping via direct session injection.
-	s1 := newWithPTY(newFakePTY(), 10, 2, nil, nil)
-	s2 := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s1 := newTestSession(newFakePTY(), 10, 2, nil, nil)
+	s2 := newTestSession(newFakePTY(), 10, 2, nil, nil)
 
 	m.mu.Lock()
 	m.sessions = append(m.sessions, s1, s2)
@@ -149,8 +149,8 @@ func TestManagerLifecycle(t *testing.T) {
 
 func TestManagerTabsCarryIDs(t *testing.T) {
 	m := NewManager(nil)
-	s1 := newWithPTY(newFakePTY(), 10, 2, nil, nil)
-	s2 := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s1 := newTestSession(newFakePTY(), 10, 2, nil, nil)
+	s2 := newTestSession(newFakePTY(), 10, 2, nil, nil)
 
 	m.mu.Lock()
 	m.sessions = append(m.sessions, s1, s2)
@@ -177,9 +177,9 @@ func TestManagerTabsCarryIDs(t *testing.T) {
 
 func TestManagerNextPrevWraps(t *testing.T) {
 	m := NewManager(nil)
-	s1 := newWithPTY(newFakePTY(), 10, 2, nil, nil)
-	s2 := newWithPTY(newFakePTY(), 10, 2, nil, nil)
-	s3 := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s1 := newTestSession(newFakePTY(), 10, 2, nil, nil)
+	s2 := newTestSession(newFakePTY(), 10, 2, nil, nil)
+	s3 := newTestSession(newFakePTY(), 10, 2, nil, nil)
 
 	m.mu.Lock()
 	m.sessions = append(m.sessions, s1, s2, s3)
@@ -210,9 +210,9 @@ func TestManagerNextPrevWraps(t *testing.T) {
 func newThreeTabManager(t *testing.T) (m *Manager, s1, s2, s3 *Session) {
 	t.Helper()
 	m = NewManager(nil)
-	s1 = newWithPTY(newFakePTY(), 10, 2, nil, nil)
-	s2 = newWithPTY(newFakePTY(), 10, 2, nil, nil)
-	s3 = newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s1 = newTestSession(newFakePTY(), 10, 2, nil, nil)
+	s2 = newTestSession(newFakePTY(), 10, 2, nil, nil)
+	s3 = newTestSession(newFakePTY(), 10, 2, nil, nil)
 
 	m.mu.Lock()
 	m.sessions = append(m.sessions, s1, s2, s3)
@@ -344,8 +344,8 @@ func TestManagerNextPrevNoTabsIsNoOp(t *testing.T) {
 
 func TestManagerCloseActive(t *testing.T) {
 	m := NewManager(nil)
-	s1 := newWithPTY(newFakePTY(), 10, 2, nil, nil)
-	s2 := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s1 := newTestSession(newFakePTY(), 10, 2, nil, nil)
+	s2 := newTestSession(newFakePTY(), 10, 2, nil, nil)
 
 	m.mu.Lock()
 	m.sessions = append(m.sessions, s1, s2)
@@ -372,7 +372,7 @@ func TestSessionTracksCursorStyle(t *testing.T) {
 	// DECSCUSR support at all).
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 10, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} }, nil)
 
 	go s.Run()
 
@@ -408,7 +408,7 @@ func writeAndWaitDirty(t *testing.T, p *fakePTY, dirty chan struct{}, data strin
 func TestScrollByClampsToHistoryLength(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 32)
-	s := newWithPTY(p, 10, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -442,7 +442,7 @@ func TestScrollByClampsToHistoryLength(t *testing.T) {
 func TestResetScroll(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 32)
-	s := newWithPTY(p, 10, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -462,7 +462,7 @@ func TestResetScroll(t *testing.T) {
 func TestAltScreenResetsScroll(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 32)
-	s := newWithPTY(p, 10, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -512,14 +512,14 @@ func TestManagerNewAutoStartsRunAndAutoRemovesOnExit(t *testing.T) {
 func TestOSC52WriteIsAvailableToTake(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 10, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
 	payload := base64.StdEncoding.EncodeToString([]byte("copied text"))
 	writeAndWaitDirty(t, p, dirty, "\x1b]52;c;"+payload+"\x07")
 
-	data, ok := s.TakeClipboardWrite()
+	data, _, ok := s.TakeClipboardWrite()
 	if !ok {
 		t.Fatal("expected a pending clipboard write")
 	}
@@ -531,50 +531,60 @@ func TestOSC52WriteIsAvailableToTake(t *testing.T) {
 func TestOSC52TakeClipboardWriteClearsPending(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 10, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
 	payload := base64.StdEncoding.EncodeToString([]byte("once"))
 	writeAndWaitDirty(t, p, dirty, "\x1b]52;c;"+payload+"\x07")
 
-	if _, ok := s.TakeClipboardWrite(); !ok {
+	if _, _, ok := s.TakeClipboardWrite(); !ok {
 		t.Fatal("expected a pending clipboard write the first time")
 	}
-	if _, ok := s.TakeClipboardWrite(); ok {
+	if _, _, ok := s.TakeClipboardWrite(); ok {
 		t.Fatal("expected no pending clipboard write after it was already taken")
 	}
 }
 
 func TestOSC52NoWriteMeansNothingToTake(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
-	if _, ok := s.TakeClipboardWrite(); ok {
+	s := newTestSession(newFakePTY(), 10, 2, nil, nil)
+	if _, _, ok := s.TakeClipboardWrite(); ok {
 		t.Fatal("expected no pending clipboard write by default")
 	}
 }
 
-func TestOSC52QueryGetsNoResponse(t *testing.T) {
-	// Query is disabled unconditionally (see osc52Bridge's doc comment,
-	// a security-motivated default matching kitty) — the shell should
-	// see silence, not an error, and nothing should reach
-	// TakeClipboardWrite either.
+func TestOSC52EmptyPayloadClearsClipboard(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 10, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} }, nil)
+	go s.Run()
+	defer func() { _ = s.Close() }()
+
+	writeAndWaitDirty(t, p, dirty, "\x1b]52;c;\x07")
+	data, clear, ok := s.TakeClipboardWrite()
+	if !ok || !clear || len(data) != 0 {
+		t.Fatalf("TakeClipboardWrite = (%q, clear=%v, ok=%v), want clear", data, clear, ok)
+	}
+}
+
+func TestOSC52QueryGetsNoResponse(t *testing.T) {
+	// Query is disabled by default (see osc52Bridge) — the shell should
+	// see silence, and nothing should reach TakeClipboardWrite either.
+	p := newFakePTY()
+	dirty := make(chan struct{}, 8)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
 	writeAndWaitDirty(t, p, dirty, "\x1b]52;c;?\x07")
 
-	// Give the (absent) response a moment to have arrived if the
-	// implementation were wrong.
 	select {
 	case b := <-readAvailable(p.fromSession):
 		t.Fatalf("expected no OSC52 query response, got %q", b)
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	if _, ok := s.TakeClipboardWrite(); ok {
+	if _, _, ok := s.TakeClipboardWrite(); ok {
 		t.Fatal("a query must not populate a pending write")
 	}
 }

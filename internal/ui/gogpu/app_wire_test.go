@@ -95,7 +95,8 @@ func TestWireWindowRegistersCallbacks(t *testing.T) {
 
 func TestWireEventSourceKeyboardDedup(t *testing.T) {
 	s, app := testUIState(t)
-	if err := s.wireFirstTab(testWireCfg(), app); err != nil {
+	s.cfg = testWireCfg()
+	if err := s.wireFirstTab(app); err != nil {
 		t.Fatalf("wireFirstTab: %v", err)
 	}
 	defer func() { _ = s.mgr.CloseActive() }()
@@ -135,7 +136,8 @@ func TestWireLifecycleCallbacksSurfaceAvailableNilWindowIsNoop(t *testing.T) {
 
 func TestWireLifecycleCallbacksOnCloseClosesEveryTab(t *testing.T) {
 	s, app := testUIState(t)
-	if err := s.wireFirstTab(testWireCfg(), app); err != nil {
+	s.cfg = testWireCfg()
+	if err := s.wireFirstTab(app); err != nil {
 		t.Fatalf("wireFirstTab: %v", err)
 	}
 	s.wireLifecycleCallbacks(app)
@@ -145,7 +147,8 @@ func TestWireLifecycleCallbacksOnCloseClosesEveryTab(t *testing.T) {
 
 func TestWireLifecycleCallbacksOnFocusForwardsToActiveSession(t *testing.T) {
 	s, app := testUIState(t)
-	if err := s.wireFirstTab(testWireCfg(), app); err != nil {
+	s.cfg = testWireCfg()
+	if err := s.wireFirstTab(app); err != nil {
 		t.Fatalf("wireFirstTab: %v", err)
 	}
 	defer func() { _ = s.mgr.CloseActive() }()

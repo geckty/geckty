@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"strings"
+	"time"
 
 	"golang.org/x/image/font"
 
@@ -41,7 +42,16 @@ const (
 	plusChipMarginDp    = 2 // gap between the "+" chip circle and the bar edges
 	plusArmLenDp        = 5 // "+" arm half-length — 1px larger than closeArmLenDp since the "+" sits in a bigger chip and reads too small at the same size
 	plusArmThicknessDp  = 2 // "+" stroke — thicker than closeArmThicknessDp to stay balanced against the larger arm length
+
+	commandDotRadiusDp = 3 // "command running/finished" indicator dot radius, see commandIndicatorColor
 )
+
+// commandIndicatorFade is how long a finished command's success/failure dot
+// (see commandIndicatorColor) stays visible on its tab before fading back to
+// nothing — a permanent per-tab badge that accumulates forever would be
+// noise; a command that's still running has no such timeout, it stays lit
+// until OSC 133;D fires.
+const commandIndicatorFade = 3 * time.Second
 
 // dpToPx converts a logical (DPI-independent) pixel size to device pixels
 // at the given scale factor, rounding half up rather than truncating so
@@ -305,7 +315,8 @@ func (tb *TabBar) paintTab(buf []byte, frameW, frameH int, pal theme.Palette, t 
 	title := truncateTitle(tabTitle(t))
 	tb.drawTextCentered(buf, frameW, frameH, title, titleX0, 0, titleWidth, h, toRGBA(fg))
 
-	if showCloseGlyph {
+	switch {
+	case showCloseGlyph:
 		closeFG := toRGBA(chrome.DimFG(fg, pal.Background, 0.15))
 		ccx, ccy := x0+edgePad+zoneW/2, h/2
 		armLen := dpToPx(closeArmLenDp, tb.Scale)
@@ -317,6 +328,42 @@ func (tb *TabBar) paintTab(buf []byte, frameW, frameH int, pal theme.Palette, t 
 			thickness = 1
 		}
 		fillDiagonalCross(buf, frameW, ccx, ccy, armLen, thickness, closeFG)
+	case reserveClose:
+		// The close ×'s zone sits empty whenever it isn't hovered — reuse
+		// it for the OSC 133 "command running" indicator rather than
+		// reserving separate space that would eat into the title's own
+		// (already narrow) budget.
+		if dot, ok := commandIndicatorColor(t.Session, pal); ok {
+			cx, cy := x0+edgePad+zoneW/2, h/2
+			r := dpToPx(commandDotRadiusDp, tb.Scale)
+			if r < 2 {
+				r = 2
+			}
+			fillRoundRect(buf, frameW, cx-r, cy-r, cx+r, cy+r, r, dot)
+		}
+	}
+}
+
+// commandIndicatorColor reports the color a tab's OSC 133 status indicator
+// should paint — its tab-bar pill dot (see paintTab) and the active tab's
+// window-border highlight (see paintCommandBorder) share this — and false
+// when nothing should be drawn: no command has run yet, or the last one
+// finished more than commandIndicatorFade ago.
+func commandIndicatorColor(sess *session.Session, pal theme.Palette) (color.RGBA, bool) {
+	sess.Term.RLock()
+	cmd := sess.Term.CommandState()
+	sess.Term.RUnlock()
+
+	switch {
+	case cmd.Running:
+		return toRGBA(pal.ANSI[6]), true // cyan: in progress
+	case cmd.ExitCode != nil && time.Since(cmd.FinishedAt) < commandIndicatorFade:
+		if *cmd.ExitCode == 0 {
+			return toRGBA(pal.ANSI[2]), true // green: succeeded
+		}
+		return toRGBA(pal.ANSI[1]), true // red: failed
+	default:
+		return color.RGBA{}, false
 	}
 }
 

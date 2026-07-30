@@ -13,6 +13,7 @@ package gogpu
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -61,6 +62,14 @@ type uiState struct {
 	pluginHost      *plugin.Host
 	stopPlugins     func()
 
+	// pendingCfg is the hand-off slot a background config.Config.Watch
+	// goroutine stores a freshly reloaded Config into (see wireConfigReload)
+	// — never read or mutated off the draw goroutine. applyPendingConfig,
+	// called at the top of onDraw, is the only place that drains it, so
+	// every actual field it touches on uiState (cfg, palette, keymap, the
+	// font cache) is only ever written from that one goroutine.
+	pendingCfg atomic.Pointer[config.Config]
+
 	cols, rows int
 
 	blinkOn atomic.Bool
@@ -87,10 +96,12 @@ type uiState struct {
 
 	scrollAccumPx float64
 
-	// keyHandled suppresses the text-input callback that (on some
-	// platforms) still fires after a shortcut key press was consumed —
-	// same purpose as termizard's identically-named flag.
-	keyHandled bool
+	// keyEcho holds text that a following SetOnTextInput should discard as
+	// an OS echo of the key we already handled. Only set for short-lived
+	// printable echoes (shortcuts / single-byte writes), with a TTL so a
+	// stale value after layout switch / IME never swallows real input.
+	keyEcho   string
+	keyEchoAt time.Time
 
 	// perWindowKeyPressed / perWindowTextInputed dedupe the per-window
 	// SetOnKeyPress/SetOnTextInput callbacks (wireWindow) against the
@@ -105,6 +116,7 @@ type uiState struct {
 	// EventSource side to wrongly swallow that following character. Same
 	// fix termizard already shipped for this exact gogpu behavior.
 	perWindowKeyPressed  bool
+	perWindowKeyReleased bool
 	perWindowTextInputed bool
 
 	// pendingTexSync / inLiveResize implement the Windows live-resize
@@ -148,7 +160,7 @@ func Run(cfg *config.Config) error {
 	s.wireSessionManager(gapp)
 	defer s.resizeDebouncer.Stop()
 
-	if err := s.wireFirstTab(cfg, gapp); err != nil {
+	if err := s.wireFirstTab(gapp); err != nil {
 		return err
 	}
 
@@ -157,6 +169,9 @@ func Run(cfg *config.Config) error {
 
 	stopBlink := s.startBlinkLoop(gapp)
 	defer stopBlink()
+
+	stopConfigReload := s.wireConfigReload(gapp)
+	defer stopConfigReload()
 
 	s.wireLifecycleCallbacks(gapp)
 	s.wireEventSource(gapp)
@@ -244,31 +259,115 @@ func (s *uiState) wireSessionManager(gapp gpuApp) {
 	})
 }
 
-// wireFirstTab sets s.newTab (spawning cfg.ShellCommand() in the user's
-// home directory at the current grid size) and opens the first tab,
-// returning any error from that initial spawn.
-func (s *uiState) wireFirstTab(cfg *config.Config, gapp gpuApp) error {
+// wireFirstTab sets s.newTab (spawning s.cfg.ShellCommand() — read fresh
+// each call, not the cfg parameter, so a hot-reloaded shell.command takes
+// effect for tabs opened after the reload; already-running tabs keep
+// whatever shell they were launched with) in the user's home directory at
+// the current grid size, and opens the first tab, returning any error from
+// that initial spawn.
+func (s *uiState) wireFirstTab(gapp gpuApp) error {
+	const op = "ui.wireFirstTab"
 	homeDir, _ := os.UserHomeDir()
 	s.newTab = func() error {
+		dir := strings.TrimSpace(s.cfg.Shell.WorkingDir)
+		if dir == "" {
+			dir = homeDir
+		}
 		_, err := s.mgr.New(session.Config{
-			Command: cfg.ShellCommand(),
-			Dir:     homeDir,
-			Cols:    s.cols,
-			Rows:    s.rows,
-			OnDirty: gapp.RequestRedraw,
+			Command:          s.cfg.ShellCommand(),
+			Env:              append([]string(nil), s.cfg.Shell.Env...),
+			Dir:              dir,
+			Cols:             s.cols,
+			Rows:             s.rows,
+			HistoryLimit:     s.cfg.Scrollback.Lines,
+			Clipboard:        session.ParseClipboardPolicy(s.cfg.Clipboard.OSC52Write, s.cfg.Clipboard.OSC52Read, s.cfg.Clipboard.MaxSize),
+			OnDirty:          gapp.RequestRedraw,
+			ShellIntegration: s.cfg.Shell.Integration,
+			Log:              slog.Default().With(slog.String("op", op)),
 		})
-		return err
+		if err != nil {
+			return fmt.Errorf("%s: %w", op, err)
+		}
+		return nil
 	}
 	return s.newTab()
+}
+
+// wireConfigReload starts watching s.cfg's source file (see
+// config.Config.Watch) when s.cfg.HotReload is set, handing each
+// successfully reparsed Config to applyPendingConfig via the pendingCfg
+// slot and requesting a redraw so onDraw picks it up promptly rather than
+// waiting for the next unrelated repaint. A no-op (returning a no-op stop
+// func) when HotReload is off or s.cfg has no source path (e.g. tests
+// building a Config directly rather than through config.Load).
+func (s *uiState) wireConfigReload(gapp gpuApp) (stop func()) {
+	if !s.cfg.HotReload {
+		return func() {}
+	}
+	return s.cfg.Watch(func(reloaded *config.Config, err error) {
+		if err != nil {
+			slog.Warn("reload config", slog.Any("error", err))
+			return
+		}
+		s.pendingCfg.Store(reloaded)
+		gapp.RequestRedraw()
+	})
+}
+
+// applyPendingConfig drains pendingCfg (see wireConfigReload) and, if a
+// reloaded Config is waiting, applies it. Called at the top of onDraw so
+// every actual mutation below happens on the draw goroutine, not the
+// background watch goroutine that detected the change.
+//
+// Deliberately not reloaded here: Window (resizing a live window on config
+// change would be a surprising side effect of editing a text file, not a
+// requested one), Plugins (unloading/reloading a running WASM host safely
+// is a separate, larger feature), and already-running tabs' Shell.Command
+// (wireFirstTab reads s.cfg fresh, so only tabs opened after this point see
+// a changed shell).
+func (s *uiState) applyPendingConfig() {
+	reloaded := s.pendingCfg.Swap(nil)
+	if reloaded == nil {
+		return
+	}
+	s.applyConfig(reloaded)
+}
+
+func (s *uiState) applyConfig(cfg *config.Config) {
+	if palette, err := theme.NewPalette(cfg.Colors); err != nil {
+		slog.Warn("reload config: invalid colors, keeping previous", slog.Any("error", err))
+	} else {
+		s.palette = palette
+		s.painter.Palette = palette
+	}
+	if keymap, err := NewKeymap(cfg.Keybindings); err != nil {
+		slog.Warn("reload config: invalid keybindings, keeping previous", slog.Any("error", err))
+	} else {
+		s.keymap = keymap
+	}
+
+	s.cfg = cfg
+	// Force ensureFonts to rebuild every face on the next call (this same
+	// frame, right after applyPendingConfig returns) even if size/scale
+	// happen to match its cache — Family/Bold/Italic may have changed, and
+	// ensureFonts' cache check has no way to notice that on its own.
+	s.painter.Fonts = fontBundle{}
 }
 
 // startBlinkLoop starts the cursor-blink ticker goroutine and returns a
 // stop func that terminates it — mirrors loadPlugins' stopPlugins pattern
 // so Run's shutdown sequence reads the same way for both.
 func (s *uiState) startBlinkLoop(gapp gpuApp) (stop func()) {
+	if !s.cfg.Cursor.Blink {
+		return func() {}
+	}
+	interval := time.Duration(s.cfg.Cursor.IntervalMs) * time.Millisecond
+	if interval <= 0 {
+		interval = 530 * time.Millisecond
+	}
 	done := make(chan struct{})
 	go func() {
-		ticker := time.NewTicker(530 * time.Millisecond)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -320,6 +419,10 @@ func (s *uiState) wireWindow(win gpuWindow) {
 		s.perWindowKeyPressed = true
 		s.handleKeyPress(key, mods)
 	})
+	win.SetOnKeyRelease(func(key gpucontext.Key, mods gpucontext.Modifiers) {
+		s.perWindowKeyReleased = true
+		s.handleKeyRelease(key, mods)
+	})
 	win.SetOnTextInput(func(text string) {
 		s.perWindowTextInputed = true
 		s.handleTextInput(text)
@@ -352,6 +455,13 @@ func (s *uiState) wireEventSource(gapp gpuApp) {
 		}
 		s.handleKeyPress(key, mods)
 	})
+	src.OnKeyRelease(func(key gpucontext.Key, mods gpucontext.Modifiers) {
+		if s.perWindowKeyReleased {
+			s.perWindowKeyReleased = false
+			return
+		}
+		s.handleKeyRelease(key, mods)
+	})
 	src.OnTextInput(func(text string) {
 		if s.perWindowTextInputed {
 			s.perWindowTextInputed = false
@@ -370,15 +480,36 @@ func (s *uiState) wireEventSource(gapp gpuApp) {
 	}
 }
 
+const keyEchoTTL = 80 * time.Millisecond
+
+func (s *uiState) setKeyEcho(text string) {
+	if text == "" {
+		s.keyEcho = ""
+		return
+	}
+	// Only single printable ASCII letters/digits are useful as OS echoes
+	// of shortcuts. Escape sequences and control bytes must not stick —
+	// they never arrive as matching TextInput and used to swallow IME text.
+	if len(text) == 1 {
+		c := text[0]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			s.keyEcho = text
+			s.keyEchoAt = time.Now()
+			return
+		}
+	}
+	s.keyEcho = ""
+}
+
 // handleKeyPress matches a shortcut first, then falls through to Kitty/
 // legacy encoding for the active session — the same precedence as the old
 // gio code's key.Event case, adapted to gpucontext's split key/text-input
-// callbacks (see keyHandled's doc comment).
+// callbacks (see keyEcho's doc comment).
 func (s *uiState) handleKeyPress(key gpucontext.Key, mods gpucontext.Modifiers) {
-	s.keyHandled = false
+	s.keyEcho = ""
 	if action, ok := s.keymap.Match(key, mods); ok {
 		s.dispatchAction(action)
-		s.keyHandled = true
+		s.setKeyEcho(keyToChar[key])
 		return
 	}
 	active := s.mgr.Active()
@@ -390,19 +521,35 @@ func (s *uiState) handleKeyPress(key gpucontext.Key, mods gpucontext.Modifiers) 
 	active.Term.RUnlock()
 	if b, ok := EncodeKitty(keyState, key, mods, true); ok {
 		_, _ = active.Write(b)
-		s.keyHandled = true
+		s.setKeyEcho(string(b))
 		return
 	}
 	if b, ok := EncodeKey(key, mods); ok {
 		_, _ = active.Write(b)
-		s.keyHandled = true
+		s.setKeyEcho(string(b))
+	}
+}
+
+func (s *uiState) handleKeyRelease(key gpucontext.Key, mods gpucontext.Modifiers) {
+	active := s.mgr.Active()
+	if active == nil {
+		return
+	}
+	active.Term.RLock()
+	keyState := active.Term.KeyState()
+	active.Term.RUnlock()
+	if b, ok := EncodeKitty(keyState, key, mods, false); ok {
+		_, _ = active.Write(b)
 	}
 }
 
 func (s *uiState) handleTextInput(text string) {
-	if s.keyHandled {
-		s.keyHandled = false
-		return
+	if echo := s.keyEcho; echo != "" {
+		s.keyEcho = ""
+		fresh := time.Since(s.keyEchoAt) <= keyEchoTTL
+		if fresh && strings.EqualFold(echo, text) {
+			return
+		}
 	}
 	if text == "" {
 		return
@@ -451,6 +598,8 @@ func (s *uiState) dispatchAction(action Action) {
 // lay out chrome + grid, paint into the persistent frame buffer, and
 // present it as a texture.
 func (s *uiState) onDraw(ctx *gogpulib.Context) {
+	s.applyPendingConfig()
+
 	scale := ctx.ScaleFactor()
 	s.ensureFonts(scale)
 
@@ -467,7 +616,7 @@ func (s *uiState) onDraw(ctx *gogpulib.Context) {
 	needFinalSync := s.consumeLiveResizeSync(inLiveResize)
 
 	tabBarH := s.tabBarHeightPx()
-	padPx := dpToPx(chromeContentPadDp, scale)
+	padPx := dpToPx(s.contentPadDp(), scale)
 	newCols, newRows := gridSize(image.Pt(fw-2*padPx, fh-tabBarH-2*padPx), s.cellW, s.cellH)
 
 	s.paintFrame(fw, fh, tabBarH, padPx)
@@ -544,7 +693,38 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 	if active := s.mgr.Active(); active != nil {
 		s.painter.Paint(s.frame, fw, fh, padPx, tabBarH+padPx, active.Term, active.ScrollOffset(), gridSelection(active), gridPlacements(active), s.blinkOn.Load())
 		s.paintScrollBarOverlay(fw, fh, tabBarH+padPx, active, time.Now().Before(s.scrollBarUntil))
+		s.paintCommandBorder(fw, fh, active)
 	}
+}
+
+// commandBorderThicknessDp is the active tab's OSC 133 status border's
+// width — thick enough to read clearly as "this window has a highlight"
+// at a glance without eating meaningfully into the content area, which
+// tabBarShowTabs()-hidden single-tab windows (the common case) have no
+// other indicator for at all (the tab-pill dot in tabbar.go's paintTab
+// needs a visible tab strip, which a single tab doesn't show by default).
+const commandBorderThicknessDp = 3
+
+// paintCommandBorder outlines the whole window in commandIndicatorColor's
+// color for sess — cyan while a command is running, a brief green/red
+// flash after it finishes — so there's a highlight visible regardless of
+// tab count or tab-bar visibility, not just the active tab's own pill.
+func (s *uiState) paintCommandBorder(fw, fh int, sess *session.Session) {
+	c, ok := commandIndicatorColor(sess, s.palette)
+	if !ok {
+		return
+	}
+	t := dpToPx(commandBorderThicknessDp, s.scale)
+	if t < 1 {
+		t = 1
+	}
+	if 2*t >= fw || 2*t >= fh {
+		return
+	}
+	fillRect(s.frame, fw, 0, 0, fw, t, c)     // top
+	fillRect(s.frame, fw, 0, fh-t, fw, fh, c) // bottom
+	fillRect(s.frame, fw, 0, 0, t, fh, c)     // left
+	fillRect(s.frame, fw, fw-t, 0, fw, fh, c) // right
 }
 
 // triggerResizeIfNeeded tells s.resizeDebouncer about a new grid size,
@@ -567,9 +747,15 @@ func (s *uiState) triggerResizeIfNeeded(newCols, newRows int, inLiveResize, need
 // active one.
 func (s *uiState) drainClipboardWrites() {
 	for _, tb := range s.mgr.Tabs() {
-		if data, ok := tb.Session.TakeClipboardWrite(); ok {
-			_ = clipboardWrite(s.app, string(data))
+		data, clear, ok := tb.Session.TakeClipboardWrite()
+		if !ok {
+			continue
 		}
+		if clear {
+			_ = clipboardWrite(s.app, "")
+			continue
+		}
+		_ = clipboardWrite(s.app, string(data))
 	}
 }
 
@@ -602,6 +788,13 @@ func (s *uiState) uploadAndPresent(ctx *gogpulib.Context, fw, fh int) {
 
 const chromeContentPadDp = 8
 
+func (s *uiState) contentPadDp() int {
+	if s.cfg != nil && s.cfg.Window.Padding > 0 {
+		return s.cfg.Window.Padding
+	}
+	return chromeContentPadDp
+}
+
 // ensureFonts (re)loads the grid + tab-bar font faces when the scale
 // factor or configured font size changes, mirroring the old gio code's
 // once-per-DPI cell measurement, generalized to cover both fonts.
@@ -610,18 +803,28 @@ func (s *uiState) ensureFonts(scale float64) {
 	if size <= 0 {
 		size = 13
 	}
-	if s.painter.Face != nil && s.fontSizeCurrent == float64(size) && s.scale == scale {
+	if s.painter.Fonts.regular != nil && s.fontSizeCurrent == float64(size) && s.scale == scale {
 		return
 	}
-	b := loadFontBundle(s.cfg.Font.Family, float64(size), scale)
-	s.painter.Face = b.face
+	b := loadFontBundle(s.cfg.Font.Family, float64(size), scale, roleMono)
+	if !s.cfg.Font.Bold {
+		b.bold, b.boldItalic = nil, nil
+	}
+	if !s.cfg.Font.Italic {
+		b.italic, b.boldItalic = nil, nil
+	}
+	s.painter.Fonts = b
 	s.painter.CellWidth = b.cellW
 	s.painter.CellHeight = b.cellH
 	s.painter.Ascent = b.ascent
 	s.cellW, s.cellH, s.asc = b.cellW, b.cellH, b.ascent
 
-	tb := loadFontBundle(s.cfg.Font.Family, 12, scale)
-	s.tabBar.Face = tb.face
+	uiSize := s.cfg.UIFont.Size
+	if uiSize <= 0 {
+		uiSize = 12
+	}
+	tb := loadFontBundle(s.cfg.UIFont.Family, uiSize, scale, roleUI)
+	s.tabBar.Face = tb.regular
 	s.tabBar.Ascent = tb.ascent
 	s.tabBar.Scale = scale
 

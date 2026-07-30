@@ -29,7 +29,7 @@ func testPainter() *Painter {
 	face := basicfont.Face7x13
 	return &Painter{
 		Palette:    testPalette(),
-		Face:       face,
+		Fonts:      fontBundle{regular: face},
 		CellWidth:  7,
 		CellHeight: 13,
 		Ascent:     face.Metrics().Ascent.Ceil(),
@@ -38,7 +38,7 @@ func testPainter() *Painter {
 
 func TestPainterPaintRendersText(t *testing.T) {
 	p := testPainter()
-	term := vt.New(10, 3, io.Discard, nil)
+	term := vt.New(10, 3, io.Discard, nil, 0)
 	_, _ = term.Write([]byte("Hi"))
 
 	buf := newBuf(100, 60)
@@ -71,7 +71,7 @@ func TestPainterPaintRendersText(t *testing.T) {
 
 func TestPainterPaintZeroCellMetricsIsNoop(t *testing.T) {
 	p := &Painter{Palette: testPalette()}
-	term := vt.New(10, 3, io.Discard, nil)
+	term := vt.New(10, 3, io.Discard, nil, 0)
 	buf := newBuf(50, 50)
 	if p.Paint(buf, 50, 50, 0, 0, term, 0, Selection{}, nil, true) {
 		t.Fatal("Paint with CellWidth/CellHeight<=0 should return false")
@@ -80,7 +80,7 @@ func TestPainterPaintZeroCellMetricsIsNoop(t *testing.T) {
 
 func TestPainterPaintSelectionHighlight(t *testing.T) {
 	p := testPainter()
-	term := vt.New(10, 3, io.Discard, nil)
+	term := vt.New(10, 3, io.Discard, nil, 0)
 	_, _ = term.Write([]byte("abcdefghij"))
 
 	buf := newBuf(100, 60)
@@ -105,14 +105,14 @@ func TestPainterPaintCursorStyles(t *testing.T) {
 	p := testPainter()
 	fg := toRGBA(p.Palette.Foreground)
 
-	blockTerm := vt.New(10, 3, io.Discard, nil)
+	blockTerm := vt.New(10, 3, io.Discard, nil, 0)
 	buf := newBuf(100, 60)
 	p.Paint(buf, 100, 60, 0, 0, blockTerm, 0, Selection{}, nil, true)
 	if got := pixelAt(buf, 100, 3, 6); got != fg {
 		t.Fatalf("block cursor center pixel = %v, want FG %v", got, fg)
 	}
 
-	underlineTerm := vt.New(10, 3, io.Discard, nil)
+	underlineTerm := vt.New(10, 3, io.Discard, nil, 0)
 	_, _ = underlineTerm.Write([]byte("\x1b[4 q")) // DECSCUSR: steady underline
 	buf2 := newBuf(100, 60)
 	p.Paint(buf2, 100, 60, 0, 0, underlineTerm, 0, Selection{}, nil, true)
@@ -123,7 +123,7 @@ func TestPainterPaintCursorStyles(t *testing.T) {
 		t.Fatalf("underline cursor should paint the bottom row, got %v", got)
 	}
 
-	barTerm := vt.New(10, 3, io.Discard, nil)
+	barTerm := vt.New(10, 3, io.Discard, nil, 0)
 	_, _ = barTerm.Write([]byte("\x1b[6 q")) // DECSCUSR: steady bar
 	buf3 := newBuf(100, 60)
 	p.Paint(buf3, 100, 60, 0, 0, barTerm, 0, Selection{}, nil, true)
@@ -137,7 +137,7 @@ func TestPainterPaintCursorStyles(t *testing.T) {
 
 func TestPainterPaintScrollOffsetSkipsCursorAndSelection(t *testing.T) {
 	p := testPainter()
-	term := vt.New(10, 2, io.Discard, nil)
+	term := vt.New(10, 2, io.Discard, nil, 0)
 	buf := newBuf(100, 60)
 	// scrollOffset != 0 must skip cursor/selection painting without error.
 	if !p.Paint(buf, 100, 60, 0, 0, term, 1, Selection{Active: true}, nil, true) {
@@ -147,7 +147,7 @@ func TestPainterPaintScrollOffsetSkipsCursorAndSelection(t *testing.T) {
 
 func TestPainterPaintPlacementsSkipsOutOfViewport(t *testing.T) {
 	p := testPainter()
-	term := vt.New(10, 3, io.Discard, nil)
+	term := vt.New(10, 3, io.Discard, nil, 0)
 	buf := newBuf(100, 60)
 
 	img := image.NewRGBA(image.Rect(0, 0, 14, 13))

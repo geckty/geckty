@@ -7,28 +7,45 @@ import "runtime"
 // that does.
 func Default() *Config {
 	return &Config{
-		Window: WindowConfig{Width: 1000, Height: 650},
-		Font:   FontConfig{Family: "monospace", Size: 13},
+		Window: WindowConfig{Width: 1000, Height: 650, Padding: 8},
+		// Family "": geckty's bundled IBM Plex Mono/PT Sans (see
+		// assets.Fonts and FontConfig/UIFontConfig's doc comments) rather
+		// than "monospace"'s platform-default search — a consistent,
+		// good-looking default everywhere instead of depending on what a
+		// given machine happens to have installed.
+		Font:   FontConfig{Family: "", Size: 13, Bold: true, Italic: true},
+		UIFont: UIFontConfig{Family: "", Size: 12},
 		Colors: defaultColors(),
+		Shell: ShellConfig{
+			// See Integration's doc comment: on by default, only touches
+			// zsh/bash, and only when Command (empty here) is left at its
+			// own default.
+			Integration: true,
+		},
 		Selection: SelectionConfig{
-			// Letters/digits/"_" always count; extra chars match macOS
-			// Terminal.app's double-click on filenames like
-			// config.example.toml ("." / "-").
 			WordChars: "._-",
 		},
 		TabBar: TabBarConfig{
-			// 2 (not 1) so a single open tab shows neither the strip nor
-			// "+" — matching Terminal.app/iTerm2's default of staying out
-			// of the way until there's a second tab to switch between.
 			ShowThreshold: 2,
 			PlusButton:    PlusButtonConfig{ShowThreshold: 2},
 		},
+		Scrollback: ScrollbackConfig{
+			Lines:           10000,
+			WheelMultiplier: 1,
+		},
+		Cursor: CursorConfig{
+			Shape:      "block",
+			Blink:      true,
+			IntervalMs: 530,
+		},
+		Clipboard: ClipboardConfig{
+			OSC52Write: "allow",
+			OSC52Read:  "deny",
+			MaxSize:    5 << 20, // 5 MiB
+		},
 		Keybindings: defaultKeybindings(),
-		// "error": geckty is desktop software, not a service someone
-		// tails logs of by default — stay quiet unless something's
-		// actually gone wrong. Raise via log_level or -log-level to
-		// debug a specific issue.
-		LogLevel: "error",
+		LogLevel:    "error",
+		HotReload:   true,
 	}
 }
 
@@ -44,10 +61,10 @@ func defaultColors() ColorsConfig {
 // defaultKeybindings avoids plain Ctrl+T/Ctrl+W/Ctrl+C/Ctrl+V: those are
 // shell readline/job-control bindings (transpose-char, delete-word-
 // backward, SIGINT, literal-next) that must reach the shell untouched, not
-// get intercepted. macOS gets Cmd-based bindings matching Terminal.app/
-// iTerm2 convention (Cmd isn't consumed by the shell, so plain Cmd+C/Cmd+V
-// are safe there); other platforms get Ctrl+Shift, matching VS Code's
-// integrated terminal, Windows Terminal, and GNOME Terminal's Ctrl+Shift+C/V.
+// get intercepted. macOS gets Cmd-based bindings (Cmd isn't consumed by
+// the shell there, so plain Cmd+C/Cmd+V are safe); other platforms get
+// Ctrl+Shift, matching how VS Code's integrated terminal, Windows
+// Terminal, and GNOME Terminal all bind Ctrl+Shift+C/V.
 func defaultKeybindings() []Keybinding {
 	if runtime.GOOS == "darwin" {
 		return []Keybinding{

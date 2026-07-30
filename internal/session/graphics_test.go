@@ -37,7 +37,7 @@ func drainWrites(p *fakePTY) {
 func TestSessionDecodesKittyGraphicsAndRecordsPlacement(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 10, 5, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 5, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	drainWrites(p)
 	defer func() { _ = s.Close() }()
@@ -68,7 +68,7 @@ func TestSessionDecodesKittyGraphicsAndRecordsPlacement(t *testing.T) {
 func TestSessionGraphicsResponseIsWrittenBack(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 10, 5, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 5, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -88,7 +88,7 @@ func TestSessionGraphicsResponseIsWrittenBack(t *testing.T) {
 func TestSessionGraphicsAnchorsToCursorPosition(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 20, 5, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 20, 5, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	drainWrites(p)
 	defer func() { _ = s.Close() }()
@@ -109,7 +109,7 @@ func TestSessionGraphicsAnchorsToCursorPosition(t *testing.T) {
 func TestSessionGraphicsUnsupportedCommandGetsErrorNoPlacement(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 10, 5, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 5, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -132,7 +132,7 @@ func TestSessionGraphicsUnsupportedCommandGetsErrorNoPlacement(t *testing.T) {
 func TestSessionGraphicsClearedOnAltScreenEntry(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 10, 5, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 5, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	drainWrites(p)
 	defer func() { _ = s.Close() }()
@@ -152,7 +152,7 @@ func TestSessionGraphicsClearedOnAltScreenEntry(t *testing.T) {
 func TestSessionGraphicsBoundedPlacementCount(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 256)
-	s := newWithPTY(p, 10, 5, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 5, func() { dirty <- struct{}{} }, nil)
 	go s.Run()
 	drainWrites(p)
 	defer func() { _ = s.Close() }()

@@ -27,7 +27,7 @@ func lineText(l emu.Line) string {
 // 2-row viewport, forcing lines to scroll into history.
 func buildScrolledTerm(t *testing.T, n int) *vt.Terminal {
 	t.Helper()
-	term := vt.New(10, 2, &bytes.Buffer{}, nil)
+	term := vt.New(10, 2, &bytes.Buffer{}, nil, 0)
 	for i := 0; i < n; i++ {
 		term.Parse([]byte("line" + string(rune('0'+i)) + "\r\n"))
 	}

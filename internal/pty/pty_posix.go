@@ -40,15 +40,19 @@ type posixPTY struct {
 // child.
 func Open(cfg Config) (PTY, error) {
 	command := cfg.Command
+	env := cfg.Env
 	if len(command) == 0 {
 		command = []string{resolveShell()}
+		if cfg.Integration {
+			command, env = applyShellIntegration(command, env)
+		}
 	}
 
 	// command is caller-supplied config (the shell to launch), the
 	// intended purpose of Open — not untrusted external input.
 	cmd := exec.Command(command[0], command[1:]...) //nolint:gosec
 	cmd.Dir = cfg.Dir
-	cmd.Env = append(os.Environ(), cfg.Env...)
+	cmd.Env = append(os.Environ(), env...)
 
 	cols, rows := cfg.Cols, cfg.Rows
 	if cols == 0 {
