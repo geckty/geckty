@@ -8,9 +8,8 @@ import (
 )
 
 // kittyFunctionalKeys maps gpucontext's positional key codes to the string
-// identities kittykbd.Key expects (originally gio key.Name glyphs — kept
-// as-is since kittykbd treats them as an opaque wire vocabulary, not a gio
-// type; see kittykbd's own doc comment).
+// identities kittykbd.Key expects (opaque string vocabulary kept by
+// kittykbd; see that package's doc comment).
 var kittyFunctionalKeys = map[gpucontext.Key]kittykbd.Key{
 	gpucontext.KeyLeft:      kittykbd.KeyLeftArrow,
 	gpucontext.KeyRight:     kittykbd.KeyRightArrow,

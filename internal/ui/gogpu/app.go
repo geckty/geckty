@@ -1,13 +1,11 @@
 // Package gogpu hosts geckty's window and event loop on top of
-// github.com/gogpu/gogpu + github.com/gogpu/gpucontext, replacing the
-// previous gioui.org-based internal/ui package. The terminal grid and tab
-// bar are rendered as direct RGBA pixel writes into a persistent per-
-// window buffer (see painter.go/tabbar.go/buffer.go), uploaded as one GPU
-// texture per dirty frame — mirroring the architecture already proven on
-// Windows by the sibling termizard project. No GPU clip primitive is ever
+// github.com/gogpu/gogpu + github.com/gogpu/gpucontext. The terminal grid
+// and tab bar are rendered as direct RGBA pixel writes into a persistent
+// per-window buffer (see painter.go/tabbar.go/buffer.go), uploaded as one
+// GPU texture per dirty frame — mirroring the architecture already proven
+// on Windows by the sibling termizard project. No GPU clip primitive is
 // used for glyph/cell/chrome painting: clipping is bounds-checked pixel
-// math instead, which is what makes this renderer immune to the gio
-// D3D11 per-cell-clip corruption bug that motivated this migration.
+// math instead.
 package gogpu
 
 import (
@@ -43,10 +41,9 @@ import (
 // terminal dirty events (see loadPlugins' doc comment).
 const pluginStatusInterval = time.Second
 
-// uiState holds everything the draw/input callbacks need — the gogpu
-// equivalent of the local variables closed over by the old gio Run()'s
-// for-loop, promoted to a struct since gogpu's callback-registration API
-// needs each handler as its own function value rather than one big loop.
+// uiState holds everything the draw/input callbacks need, promoted to a
+// struct since gogpu's callback-registration API needs each handler as its
+// own function value rather than one big event loop.
 type uiState struct {
 	cfg     *config.Config
 	app     gpuApp
@@ -80,14 +77,12 @@ type uiState struct {
 	tex            *gogpulib.Texture
 
 	// Font/cell metrics, refreshed in onDraw when scale or configured size
-	// changes (mirrors the old gio code's cellWidthMeasured-once-per-DPI
-	// logic, generalized to also cover the tab bar's own smaller font).
+	// changes (also covers the tab bar's own smaller font).
 	scale             float64
 	fontSizeCurrent   float64
 	cellW, cellH, asc int
 
-	// Tab-bar interaction state — same shape as the old gio app.go's
-	// tabDragState/tabScrollX/hoverTabIdx/scrollBarUntil.
+	// Tab-bar interaction state.
 	tabDrag        tabDragState
 	tabScrollX     int
 	hoverTabIdx    int
@@ -140,11 +135,10 @@ func (Backend) Run(cfg *config.Config) error {
 }
 
 // Run opens the geckty window, spawns a shell session per cfg, and blocks
-// running the gogpu event loop until the window closes. Unlike the old
-// gio-based Run, this itself drives the platform event pump (gogpu.App.Run
-// is both "start the toolkit's main loop" and "run this session's frame/
-// input loop" in one call) — callers should invoke it directly on the
-// main goroutine, not via a separate app.Main()-style call.
+// running the gogpu event loop until the window closes. gogpu.App.Run is
+// both "start the toolkit's main loop" and "run this session's frame/
+// input loop" in one call — callers should invoke it directly on the
+// main goroutine.
 func Run(cfg *config.Config) error {
 	palette, err := theme.NewPalette(cfg.Colors)
 	if err != nil {
@@ -503,7 +497,7 @@ func (s *uiState) setKeyEcho(text string) {
 
 // handleKeyPress matches a shortcut first, then falls through to Kitty/
 // legacy encoding for the active session — the same precedence as the old
-// gio code's key.Event case, adapted to gpucontext's split key/text-input
+// key-press path, adapted to gpucontext's split key/text-input
 // callbacks (see keyEcho's doc comment).
 func (s *uiState) handleKeyPress(key gpucontext.Key, mods gpucontext.Modifiers) {
 	s.keyEcho = ""
@@ -538,6 +532,8 @@ func (s *uiState) handleKeyRelease(key gpucontext.Key, mods gpucontext.Modifiers
 	active.Term.RLock()
 	keyState := active.Term.KeyState()
 	active.Term.RUnlock()
+	// EncodeKitty returns ok=false unless Report event types is set, so
+	// key-up never duplicates a press-shaped CSI-u under Disambiguate-only.
 	if b, ok := EncodeKitty(keyState, key, mods, false); ok {
 		_, _ = active.Write(b)
 	}
@@ -563,9 +559,8 @@ func (s *uiState) handleTextInput(text string) {
 }
 
 // dispatchAction applies a keymap-matched action. Copy/paste are
-// synchronous here (unlike gio's clipboard.WriteCmd/ReadCmd + async
-// transfer.DataEvent round trip) since gogpu's clipboard calls return
-// directly — see clipboard.go.
+// synchronous here since gogpu's clipboard calls return directly —
+// see clipboard.go.
 func (s *uiState) dispatchAction(action Action) {
 	switch action {
 	case ActionNewTab:
@@ -747,11 +742,11 @@ func (s *uiState) triggerResizeIfNeeded(newCols, newRows int, inLiveResize, need
 // active one.
 func (s *uiState) drainClipboardWrites() {
 	for _, tb := range s.mgr.Tabs() {
-		data, clear, ok := tb.Session.TakeClipboardWrite()
+		data, shouldClear, ok := tb.Session.TakeClipboardWrite()
 		if !ok {
 			continue
 		}
-		if clear {
+		if shouldClear {
 			_ = clipboardWrite(s.app, "")
 			continue
 		}
@@ -796,8 +791,7 @@ func (s *uiState) contentPadDp() int {
 }
 
 // ensureFonts (re)loads the grid + tab-bar font faces when the scale
-// factor or configured font size changes, mirroring the old gio code's
-// once-per-DPI cell measurement, generalized to cover both fonts.
+// factor or configured font size changes.
 func (s *uiState) ensureFonts(scale float64) {
 	size := s.cfg.Font.Size
 	if size <= 0 {

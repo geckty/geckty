@@ -72,7 +72,7 @@ func (b *osc52Bridge) OSC52Read(_ string) ([]byte, bool) {
 	return nil, false
 }
 
-func (b *osc52Bridge) take() (data []byte, clear bool, ok bool) {
+func (b *osc52Bridge) take() (data []byte, shouldClear bool, ok bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.clearPending {
@@ -89,8 +89,8 @@ func (b *osc52Bridge) take() (data []byte, clear bool, ok bool) {
 }
 
 // TakeClipboardWrite drains a pending OSC 52 write or clear for the UI.
-// clear=true means the OS clipboard should be emptied; data may be empty.
-func (s *Session) TakeClipboardWrite() (data []byte, clear bool, ok bool) {
+// shouldClear=true means the OS clipboard should be emptied; data may be empty.
+func (s *Session) TakeClipboardWrite() (data []byte, shouldClear bool, ok bool) {
 	return s.osc52.take()
 }
 

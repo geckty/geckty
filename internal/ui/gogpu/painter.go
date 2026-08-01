@@ -32,10 +32,10 @@ type Placement struct {
 }
 
 // Painter renders a vt.Terminal's screen as RGBA pixels into a caller-owned
-// buffer. Unlike the old gio-based grid.Painter, it does not measure its
-// own cell metrics from a live frame context — Fonts/CellWidth/CellHeight/
-// Ascent are computed once by loadFontBundle (see font.go) and kept in sync
-// by the caller (app.go) across font/DPI changes.
+// buffer. It does not measure its own cell metrics from a live frame
+// context — Fonts/CellWidth/CellHeight/Ascent are computed once by
+// loadFontBundle (see font.go) and kept in sync by the caller (app.go)
+// across font/DPI changes.
 type Painter struct {
 	Palette    theme.Palette
 	Fonts      fontBundle

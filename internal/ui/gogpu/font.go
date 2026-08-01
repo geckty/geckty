@@ -100,8 +100,8 @@ var (
 
 // systemFontCandidates returns, per style, font file bytes to try in
 // preference order: a configured family (best-effort filename match — see
-// the package's known limitation compared to gio's real system-font
-// matching), then the platform default for role, then role's embedded
+// the package's known limitation versus a full system-font matching),
+// then the platform default for role, then role's embedded
 // bundled font (assets.Fonts) as a universal last resort that's always
 // present regardless of style.
 func systemFontCandidates(configuredFamily string, role fontRole) map[fontStyle][][]byte {
@@ -207,7 +207,7 @@ func platformStyleCandidates(style fontStyle, role fontRole) []string {
 }
 
 // configuredFamilyPaths guesses filenames for a user-configured font family
-// name's regular weight — best-effort, since (unlike gio's system-font
+// name's regular weight — best-effort, since (unlike a full system-font
 // matching) there is no real font-enumeration API used here, only common
 // naming conventions.
 func configuredFamilyPaths(family, home string) []string {

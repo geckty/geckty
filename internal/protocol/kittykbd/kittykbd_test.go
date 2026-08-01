@@ -154,15 +154,14 @@ func TestEncodeReleaseEventMatchesSpecFormat(t *testing.T) {
 	}
 }
 
-func TestEncodeReleaseWithoutReportEventTypesOmitsEventField(t *testing.T) {
+func TestEncodeReleaseWithoutReportEventTypesFallsThrough(t *testing.T) {
 	// Without KeyReportEventTypes, releases aren't reported at all —
-	// the encoder should behave as if every event were a press.
-	got, ok := Encode(emu.KeyDisambiguateEscape, Event{Key: "A", Modifiers: ModCtrl, Pressed: false})
-	if !ok {
-		t.Fatal("expected ok=true")
+	// fall through so the UI's OnKeyRelease path writes nothing.
+	if _, ok := Encode(emu.KeyDisambiguateEscape, Event{Key: "A", Modifiers: ModCtrl, Pressed: false}); ok {
+		t.Fatal("expected ok=false for release without KeyReportEventTypes")
 	}
-	if want := []byte("\x1b[97;5u"); !bytes.Equal(got, want) {
-		t.Fatalf("Encode(Ctrl+A release, no event reporting) = %q, want %q", got, want)
+	if _, ok := Encode(emu.KeyDisambiguateEscape, Event{Key: KeyUpArrow, Pressed: false}); ok {
+		t.Fatal("expected ok=false for arrow release without KeyReportEventTypes")
 	}
 }
 

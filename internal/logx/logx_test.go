@@ -19,7 +19,11 @@ func TestOpTagsLoggerAndContext(t *testing.T) {
 }
 
 func TestFromNilContext(t *testing.T) {
-	if From(nil) == nil {
+	// From documents nil-safety (same as With/Op); SA1012 would otherwise
+	// forbid exercising that path.
+	var ctx context.Context // intentionally nil
+	//nolint:staticcheck // SA1012: nil ctx is the API under test
+	if From(ctx) == nil {
 		t.Fatal("From(nil) must not return nil")
 	}
 }

@@ -55,10 +55,8 @@ var namedKeyBindings = map[string]gpucontext.Key{
 // character (letters, digits, and the punctuation geckty's default
 // keybindings use). gpucontext.Key is positional (matches USB-HID usage
 // codes) rather than the localized character a layout produces — unlike
-// gio's key.Name, this means a Cmd+C shortcut resolves to the same
-// gpucontext.KeyC on any keyboard layout, so the old macOS Cyrillic-
-// physical-key normalization hack (matching "С" to "C" etc.) is no longer
-// needed and has been dropped.
+// a layout-normalized character name, this means a Cmd+C shortcut
+// resolves to the same gpucontext.KeyC on any keyboard layout.
 var singleCharBindings = map[string]gpucontext.Key{
 	"A": gpucontext.KeyA, "B": gpucontext.KeyB, "C": gpucontext.KeyC, "D": gpucontext.KeyD,
 	"E": gpucontext.KeyE, "F": gpucontext.KeyF, "G": gpucontext.KeyG, "H": gpucontext.KeyH,

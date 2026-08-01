@@ -146,6 +146,45 @@ func TestShellIntegrationBashSourcesRealRCAndEmitsOSC133(t *testing.T) {
 	}
 }
 
+func TestShellIntegrationZshUsesRealHistfile(t *testing.T) {
+	if _, err := exec.LookPath("zsh"); err != nil {
+		t.Skip("zsh not installed")
+	}
+	home := t.TempDir()
+	hist := filepath.Join(home, ".zsh_history")
+	if err := os.WriteFile(hist, []byte(": 0:0;echo from_real_history\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Empty rc so HISTFILE comes only from zsh defaults + our stub retarget.
+	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte("bindkey -e\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHELL", "/bin/zsh")
+	t.Setenv("ZDOTDIR", "")
+
+	p, err := Open(Config{
+		// Unset any inherited HISTFILE; HOME alone must drive the default.
+		Env:         []string{"HOME=" + home, "PS1=$ ", "TERM=xterm-256color", "HISTFILE="},
+		Cols:        80,
+		Rows:        24,
+		Integration: true,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = p.Close() }()
+
+	// Marker avoids matching the typed command echo (see other tests).
+	if _, err := p.Write([]byte("print -n HISTPATH=$HISTFILE\n")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	want := "HISTPATH=" + hist
+	out := readUntilContains(t, p, want, 5*time.Second)
+	if !strings.Contains(out, want) {
+		t.Fatalf("HISTFILE under integration = not %q; output: %q", hist, out)
+	}
+}
+
 func TestShellIntegrationDisabledEmitsNoOSC133(t *testing.T) {
 	if _, err := exec.LookPath("zsh"); err != nil {
 		t.Skip("zsh not installed")

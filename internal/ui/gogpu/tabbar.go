@@ -15,7 +15,7 @@ import (
 )
 
 // Tab-bar sizing, in logical (DPI-independent) pixels — same values as the
-// old gio-based chrome.Height/MinTabWidth/etc, converted to device pixels
+// chrome.Height/MinTabWidth/etc, converted to device pixels
 // by the caller (app.go) via dpToPx before reaching chrome.ComputeGeometry,
 // which is pure-Go and reused unchanged from the old chrome package.
 const (
@@ -107,7 +107,7 @@ func (s *uiState) tabBarHeightPx() int {
 // chrome package's pure-Go geometry/hit-test functions (ComputeGeometry,
 // TabAtScrolledPinned, DropIndexByOverlap, VisualTabSlot, etc.) and its
 // glass/dim color-blend helpers (GlassStyle, GlassFill, DimFG) — all
-// unchanged, already gio-free — and adding only the paint side.
+// unchanged — this file adds only the paint side.
 type TabBar struct {
 	Face   font.Face // tab-bar UI font face, at its own (smaller) size
 	Ascent int

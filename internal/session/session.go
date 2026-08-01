@@ -112,12 +112,11 @@ func newWithPTY(p pty.PTY, cols, rows int, cfg Config) *Session {
 	return s
 }
 
-// newTestSession is the test helper that used to match newWithPTY's old
-// (pty, cols, rows, onDirty, onExit) signature.
-func newTestSession(p pty.PTY, cols, rows int, onDirty func(), onExit func(error)) *Session {
+// newTestSession builds a Session around p for tests. OnExit is left nil —
+// tests that need exit handling call SetOnExit after construction.
+func newTestSession(p pty.PTY, cols, rows int, onDirty func()) *Session {
 	return newWithPTY(p, cols, rows, Config{
 		OnDirty:   onDirty,
-		OnExit:    onExit,
 		Clipboard: ClipboardPolicy{WriteAllow: true, MaxSize: defaultMaxOSC52},
 	})
 }

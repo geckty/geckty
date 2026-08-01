@@ -142,8 +142,7 @@ func TestCellSpanNeverBelowOneCell(t *testing.T) {
 }
 
 // ── Pixel-buffer assertion tests (following termizard's painter_test.go
-// precedent — this is the coverage the old gio-ops-based painter could
-// never have, since op.Ops can't be asserted on directly) ──────────────
+// precedent — coverage for the software painter's fill helpers). ───────
 
 func newBuf(w, h int) []byte { return make([]byte, w*h*4) }
 

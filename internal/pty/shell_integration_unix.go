@@ -91,12 +91,22 @@ fi
 `
 
 const zshrcIntegration = `# geckty shell integration (see internal/pty/shell_integration_unix.go)
+# Capture the stub ZDOTDIR before restoring the user's — zsh defaults
+# HISTFILE to $ZDOTDIR/.zsh_history while ZDOTDIR still points here, so
+# Up/Down history would otherwise read an empty file in this temp dir.
+_geckty_zdot_stub="$ZDOTDIR"
 if [ -n "${GECKTY_ORIG_ZDOTDIR:-}" ]; then
   export ZDOTDIR="$GECKTY_ORIG_ZDOTDIR"
 else
   unset ZDOTDIR
 fi
 unset GECKTY_ORIG_ZDOTDIR
+case "$HISTFILE" in
+  ""|"$_geckty_zdot_stub"|"$_geckty_zdot_stub"/*)
+    HISTFILE="${ZDOTDIR:-$HOME}/.zsh_history"
+    ;;
+esac
+unset _geckty_zdot_stub
 [ -f "${ZDOTDIR:-$HOME}/.zshrc" ] && source "${ZDOTDIR:-$HOME}/.zshrc"
 
 __geckty_prompt_started=0

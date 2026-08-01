@@ -89,12 +89,8 @@ func main() {
 
 	// Run through the Backend interface, not the concrete Run function
 	// directly — main.go doesn't need to know the UI toolkit, only that
-	// something implements Backend. gogpu.Backend replaces the former
-	// gio-based ui.GioBackend (see internal/ui/gogpu's package doc for
-	// why: a reproducible gio D3D11 rendering bug on Windows). Unlike gio,
-	// gogpu's App.Run is itself the platform event pump, so it's called
-	// directly on the main goroutine rather than via a background
-	// goroutine plus a separate app.Main() call.
+	// something implements Backend. gogpu.Backend's App.Run is itself the
+	// platform event pump, so it's called directly on the main goroutine.
 	var backend ui.Backend = gogpu.Backend{}
 
 	runErr := backend.Run(cfg)

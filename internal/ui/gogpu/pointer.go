@@ -16,10 +16,9 @@ const (
 	dragAutoScrollStepDp     = 8  // strip scroll distance per drag-move event once inside the edge zone
 )
 
-// handlePointerEvent is the gogpu equivalent of the old gio code's
-// pointer.Event case: route to the tab bar if the press/drag started
-// there or the pointer is currently in its Y range, otherwise to the
-// terminal grid.
+// handlePointerEvent routes pointer events to the tab bar or the grid:
+// the tab bar if the press/drag started there or the pointer is currently
+// in its Y range, otherwise the terminal grid.
 func (s *uiState) handlePointerEvent(ev gpucontext.PointerEvent) {
 	x, y := s.toDevicePx(ev.X, ev.Y)
 	tabBarPx := s.tabBarHeightPx()
