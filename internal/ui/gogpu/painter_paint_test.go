@@ -15,9 +15,18 @@ import (
 
 func testPalette() theme.Palette {
 	pal := theme.Palette{
-		Foreground: color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
-		Background: color.NRGBA{R: 0, G: 0, B: 0, A: 0xff},
-		Selection:  color.NRGBA{R: 0x52, G: 0x52, B: 0x52, A: 0xff},
+		Foreground:    color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		Background:    color.NRGBA{R: 0, G: 0, B: 0, A: 0xff},
+		Selection:     color.NRGBA{R: 0x52, G: 0x52, B: 0x52, A: 0xff},
+		SelectionFG:   color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		Cursor:        color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		TabBarBG:      color.NRGBA{R: 0x14, G: 0x14, B: 0x14, A: 0xff},
+		ActiveTabFG:   color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		ActiveTabBG:   color.NRGBA{R: 0x57, G: 0x57, B: 0x57, A: 0xff},
+		InactiveTabFG: color.NRGBA{R: 0xad, G: 0xad, B: 0xad, A: 0xff},
+		InactiveTabBG: color.NRGBA{R: 0x12, G: 0x12, B: 0x12, A: 0xff},
+		HoverTabBG:    color.NRGBA{R: 0x24, G: 0x24, B: 0x24, A: 0xff},
+		PlusButtonBG:  color.NRGBA{R: 0x1a, G: 0x1a, B: 0x1a, A: 0xff},
 	}
 	for i := range pal.ANSI {
 		pal.ANSI[i] = color.NRGBA{R: uint8(i * 10), A: 0xff}
@@ -192,5 +201,86 @@ func TestStyleOfAttrs(t *testing.T) {
 	}
 	if st.underline {
 		t.Fatal("plain glyph should not report underline")
+	}
+}
+
+func TestStyleOfDimInvisibleStrikethrough(t *testing.T) {
+	g := emu.Glyph{
+		Mode:      emu.AttrDim | emu.AttrInvisible | emu.AttrStrikethrough,
+		Underline: emu.UnderlineStyle{Mode: emu.UnderlineSingle},
+	}
+	st := styleOf(g)
+	if !st.dim || !st.invisible || !st.strikethrough || !st.underline {
+		t.Fatalf("styleOf = %+v, want dim/invisible/strikethrough/underline", st)
+	}
+}
+
+func TestDimRGBAAveragesTowardBackground(t *testing.T) {
+	fg := color.RGBA{R: 200, G: 100, B: 0, A: 255}
+	bg := color.RGBA{R: 0, G: 0, B: 0, A: 255}
+	got := dimRGBA(fg, bg)
+	if got.R != 100 || got.G != 50 || got.B != 0 || got.A != 255 {
+		t.Fatalf("dimRGBA = %v, want average toward bg", got)
+	}
+}
+
+func TestPaintUnderlineModes(t *testing.T) {
+	fg := color.RGBA{R: 0xff, A: 0xff}
+	for _, mode := range []emu.UnderlineMode{
+		emu.UnderlineSingle,
+		emu.UnderlineDouble,
+		emu.UnderlineDotted,
+		emu.UnderlineDashed,
+		emu.UnderlineCurly,
+	} {
+		buf := newBuf(20, 10)
+		paintUnderline(buf, 20, 0, 16, 10, mode, fg)
+		found := false
+		for y := 0; y < 10 && !found; y++ {
+			for x := 0; x < 16; x++ {
+				if pixelAt(buf, 20, x, y) == fg {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("paintUnderline(%v) left no foreground pixels", mode)
+		}
+	}
+}
+
+func TestPainterPaintDimInvisibleStrikethrough(t *testing.T) {
+	p := testPainter()
+	term := vt.New(10, 3, io.Discard, nil, 0)
+	// Dim + strikethrough on 'A', then invisible on 'B'.
+	_, _ = term.Write([]byte("\x1b[2;9mA\x1b[0;8mB"))
+
+	buf := newBuf(100, 60)
+	if !p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, nil, false) {
+		t.Fatal("Paint should succeed")
+	}
+
+	// Strikethrough paints a mid-cell horizontal line in cell 0.
+	midY := p.CellHeight / 2
+	foundStrike := false
+	for x := 0; x < p.CellWidth; x++ {
+		if pixelAt(buf, 100, x, midY) != toRGBA(p.Palette.Background) {
+			foundStrike = true
+			break
+		}
+	}
+	if !foundStrike {
+		t.Fatal("expected strikethrough ink in first cell")
+	}
+
+	// Invisible 'B' in cell 1 should leave that cell without glyph FG ink
+	// (background only), aside from any residual bleed — check far from
+	// cell 0.
+	x := p.CellWidth + p.CellWidth/2
+	y := 2
+	if got := pixelAt(buf, 100, x, y); got != toRGBA(p.Palette.Background) {
+		// Invisible may still leave bg fill only; non-bg means glyph leaked.
+		t.Fatalf("invisible cell pixel = %v, want background", got)
 	}
 }

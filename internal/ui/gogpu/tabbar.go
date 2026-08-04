@@ -30,11 +30,7 @@ const (
 
 	tabTitleMaxRunes = 28 // longest title before truncateTitle elides its middle
 
-	inactiveFGDim = 0.32 // how far an inactive tab's title dims toward the bar background
-	hoverFGDim    = 0.10 // how far a hovered (but inactive) tab's title dims
-
-	glassPlusDefault = 0.10 // "+" chip's glass fill factor at rest — chrome has no plus-button concept, so this stays local
-	glassPlusHover   = 0.24 // "+" chip's glass fill factor while hovered
+	glassPlusHover = 0.24 // "+" chip glass fill while hovered (rest uses palette.PlusButtonBG)
 
 	titleCloseReserveDp = 4 // gap reserved after the close-zone before centered title text may start
 	closeArmLenDp       = 4 // close "×" per-arm half-length
@@ -197,7 +193,7 @@ func (tb *TabBar) measureText(s string) int {
 // visibility lever for the tab strip itself: pass nil to paint/reserve no
 // tab pills regardless of how many sessions are actually open.
 func (tb *TabBar) Layout(buf []byte, frameW, frameH, barH int, pal theme.Palette, tabs []session.Tab, activeID int, statusText string, drag chrome.DragVisual, hoverPlus, showPlus bool) {
-	barBG := toRGBA(chrome.GlassFill(pal.Background, chrome.GlassBarLift))
+	barBG := toRGBA(pal.TabBarBG)
 	fillRect(buf, frameW, 0, 0, frameW, barH, barBG)
 
 	minTabW := dpToPx(MinTabWidthDp, tb.Scale)
@@ -272,21 +268,14 @@ func (tb *TabBar) paintTab(buf []byte, frameW, frameH int, pal theme.Palette, t 
 	rx0, ry0, rx1, ry1 := x0+inset, vpad, x0+w-inset, h-vpad
 	if rx1 > rx0 && ry1 > ry0 {
 		radius := (ry1 - ry0) / 2
-		fill := chrome.GlassFill(pal.Background, chrome.GlassStyle(active, hoverStyle, dragging))
-		fillC := toRGBA(fill)
+		fillC := toRGBA(pal.TabFill(active, hoverStyle, dragging))
 		if dragging {
 			fillC.A = chrome.GlassDragA
 		}
 		fillRoundRect(buf, frameW, rx0, ry0, rx1, ry1, radius, fillC)
 	}
 
-	fg := pal.Foreground
-	switch {
-	case !active && !dragging && hoverStyle:
-		fg = chrome.DimFG(pal.Foreground, pal.Background, hoverFGDim)
-	case !active && !dragging:
-		fg = chrome.DimFG(pal.Foreground, pal.Background, inactiveFGDim)
-	}
+	fg := pal.TabTitleFG(active, hoverStyle, dragging)
 
 	// Title is centered in the space left after the tab's side insets —
 	// and, when this tab can ever show a close ×, after its zone too (the
@@ -384,15 +373,15 @@ func (tb *TabBar) paintPlusButton(buf []byte, frameW int, pal theme.Palette, x0,
 		chip = h
 	}
 	cx, cy := x0+w/2, h/2
-	chipFactor := float32(glassPlusDefault)
 	fgDim := float32(0.30)
+	plusBG := pal.PlusButtonBG
 	if hovered {
-		chipFactor = glassPlusHover
 		fgDim = 0.12
+		plusBG = chrome.GlassFill(pal.Background, glassPlusHover)
 	}
 	if chip >= 2 {
 		left, top := cx-chip/2, cy-chip/2
-		fillRoundRect(buf, frameW, left, top, left+chip, top+chip, chip/2, toRGBA(chrome.GlassFill(pal.Background, chipFactor)))
+		fillRoundRect(buf, frameW, left, top, left+chip, top+chip, chip/2, toRGBA(plusBG))
 	}
 
 	fg := toRGBA(chrome.DimFG(pal.Foreground, pal.Background, fgDim))

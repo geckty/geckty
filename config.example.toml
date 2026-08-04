@@ -36,31 +36,33 @@ italic = true
 family = ""
 size = 12
 
-[colors]
-# preset, if set, replaces foreground/background/ansi below entirely with
-# a named built-in scheme rather than merging with them — pick one or the
-# other, not both.
-#
-# Built-in presets:
-#   "glass" — geckty's standard / default theme: a dark palette paired
-#             with the tab bar's own software glass capsules (see
-#             internal/ui/chrome/glass.go). Colors only: gogpu's window API
-#             has no transparency/blur knob, so this can't reproduce real
-#             compositor blur, only a flat approximation of it.
-preset = "glass"
+# theme loads themes/<name>.toml next to this file (or under the geckty
+# config dir), then merges any inline [colors] keys on top — Kitty/Rio
+# style. Built-in: "glass". Omit theme and set [colors] freely instead.
+# theme = "glass"
 
-# Leave the fields below commented when using a preset. Uncomment (and
-# clear preset) to customize colors by hand — these are the "glass"
-# preset's own values, spelled out so you can start from them.
-# foreground = "#f4f4f4"
-# background = "#000000"
-# selection = "#525252"
-# ansi = [
-#   "#000000", "#c23621", "#25a250", "#caca33",
-#   "#492ee1", "#d338d3", "#33bbc8", "#cbcccc",
-#   "#818383", "#fc391f", "#31e722", "#eaec23",
-#   "#5833ff", "#f935f8", "#14f0f0", "#e9ebeb",
-# ]
+[colors]
+# Free-form palette (defaults match the built-in glass theme). Empty chrome
+# keys (active_tab_*, tab_bar_background, …) are derived from background
+# with the tab bar's glass blends — set them explicitly to override.
+foreground = "#f4f4f4"
+background = "#1d1f22"
+selection_background = "#525252"
+# selection_foreground = "#f4f4f4"
+# cursor = "#f4f4f4"
+ansi = [
+  "#000000", "#c23621", "#25a250", "#caca33",
+  "#492ee1", "#d338d3", "#33bbc8", "#cbcccc",
+  "#818383", "#fc391f", "#31e722", "#eaec23",
+  "#5833ff", "#f935f8", "#14f0f0", "#e9ebeb",
+]
+# active_tab_foreground = "#f4f4f4"
+# active_tab_background = "#55585c"
+# inactive_tab_foreground = "#a0a0a0"
+# inactive_tab_background = "#2a2c30"
+# tab_bar_background = "#222428"
+# hover_tab_background = "#3a3c40"
+# plus_button_background = "#2a2c30"
 
 [shell]
 # Leave unset to use $SHELL (POSIX) or the best available PowerShell/cmd

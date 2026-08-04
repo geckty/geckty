@@ -27,3 +27,27 @@ func TestFromNilContext(t *testing.T) {
 		t.Fatal("From(nil) must not return nil")
 	}
 }
+
+func TestWithNilContextAndLogger(t *testing.T) {
+	var ctx context.Context
+	//nolint:staticcheck // SA1012: With documents nil-safety
+	got := With(ctx, nil)
+	if From(got) == nil {
+		t.Fatal("With(nil, nil) must still yield a usable logger via From")
+	}
+}
+
+func TestFromBackgroundWithoutLogger(t *testing.T) {
+	if From(context.Background()) == nil {
+		t.Fatal("From(Background) must fall back to slog.Default")
+	}
+}
+
+func TestOpNilContext(t *testing.T) {
+	var ctx context.Context
+	//nolint:staticcheck // SA1012: Op documents nil-safety
+	ctx2, log := Op(ctx, "test.op")
+	if log == nil || From(ctx2) != log {
+		t.Fatal("Op(nil, ...) must return a tagged logger on a non-nil context")
+	}
+}

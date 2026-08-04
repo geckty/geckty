@@ -140,7 +140,7 @@ func (Backend) Run(cfg *config.Config) error {
 // input loop" in one call — callers should invoke it directly on the
 // main goroutine.
 func Run(cfg *config.Config) error {
-	palette, err := theme.NewPalette(cfg.Colors)
+	palette, err := buildPalette(cfg)
 	if err != nil {
 		return err
 	}
@@ -327,8 +327,21 @@ func (s *uiState) applyPendingConfig() {
 	s.applyConfig(reloaded)
 }
 
+// buildPalette parses [colors] and applies [cursor].color over colors.cursor
+// when set (Kitty-style: dedicated cursor key wins).
+func buildPalette(cfg *config.Config) (theme.Palette, error) {
+	palette, err := theme.NewPalette(cfg.Colors)
+	if err != nil {
+		return theme.Palette{}, err
+	}
+	if err := theme.ApplyCursorColor(&palette, cfg.Cursor.Color); err != nil {
+		return theme.Palette{}, err
+	}
+	return palette, nil
+}
+
 func (s *uiState) applyConfig(cfg *config.Config) {
-	if palette, err := theme.NewPalette(cfg.Colors); err != nil {
+	if palette, err := buildPalette(cfg); err != nil {
 		slog.Warn("reload config: invalid colors, keeping previous", slog.Any("error", err))
 	} else {
 		s.palette = palette

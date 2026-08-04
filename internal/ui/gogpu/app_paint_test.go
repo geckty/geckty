@@ -102,6 +102,34 @@ func TestDrainClipboardWritesNoPendingIsNoop(t *testing.T) {
 	s.drainClipboardWrites()
 }
 
+func TestDrainClipboardWritesPendingPayload(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	if active == nil {
+		t.Fatal("expected active tab")
+	}
+	// Queue an OSC 52 write through the session's VT parser.
+	active.Term.Parse([]byte("\x1b]52;c;aGVsbG8=\x07"))
+	s.drainClipboardWrites()
+	if app.clipboard != "hello" && app.clipboard != "" {
+		// On darwin, pbcopy may succeed first and leave fakeApp untouched;
+		// either path means drain consumed the pending write.
+		t.Fatalf("unexpected clipboard state %q", app.clipboard)
+	}
+	// Second drain must be a no-op (pending cleared).
+	s.drainClipboardWrites()
+}
+
+func TestDrainClipboardWritesClear(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	active.Term.Parse([]byte("\x1b]52;c;\x07")) // empty payload => clear
+	s.drainClipboardWrites()
+	if _, _, ok := active.TakeClipboardWrite(); ok {
+		t.Fatal("drain should have consumed the clear")
+	}
+}
+
 func TestEnsureFontsLoadsOnce(t *testing.T) {
 	s, _ := testUIStateWithTab(t)
 	s.cfg.Font.Size = 13

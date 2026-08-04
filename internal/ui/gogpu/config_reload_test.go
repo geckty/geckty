@@ -15,7 +15,6 @@ func TestApplyConfigUpdatesCfgPaletteAndKeymap(t *testing.T) {
 	s.painter.Fonts.regular = basicfont.Face7x13
 
 	newCfg := config.Default()
-	newCfg.Colors.Preset = ""
 	newCfg.Colors.Foreground = "#ffffff"
 	newCfg.Colors.Background = "#000000"
 	newCfg.Colors.ANSI = [16]string{
@@ -49,7 +48,6 @@ func TestApplyConfigKeepsPreviousPaletteOnInvalidColors(t *testing.T) {
 	before := s.palette
 
 	newCfg := config.Default()
-	newCfg.Colors.Preset = ""
 	newCfg.Colors.Foreground = "not-a-color"
 
 	s.applyConfig(newCfg)

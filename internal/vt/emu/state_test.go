@@ -207,6 +207,24 @@ func TestSetAttrBroadSweep(t *testing.T) {
 	if g := cellAfter("\x1b[7m"); g.Mode&attrReverse == 0 {
 		t.Error("SGR 7 should set reverse")
 	}
+	if g := cellAfter("\x1b[2m"); g.Mode&attrDim == 0 {
+		t.Error("SGR 2 should set dim")
+	}
+	if g := cellAfter("\x1b[8m"); g.Mode&attrInvisible == 0 {
+		t.Error("SGR 8 should set invisible")
+	}
+	if g := cellAfter("\x1b[53m"); g.Mode&attrOverline == 0 {
+		t.Error("SGR 53 should set overline")
+	}
+	if g := cellAfter("\x1b[2m\x1b[22m"); g.Mode&attrDim != 0 {
+		t.Error("SGR 22 should clear dim")
+	}
+	if g := cellAfter("\x1b[8m\x1b[28m"); g.Mode&attrInvisible != 0 {
+		t.Error("SGR 28 should clear invisible")
+	}
+	if g := cellAfter("\x1b[53m\x1b[55m"); g.Mode&attrOverline != 0 {
+		t.Error("SGR 55 should clear overline")
+	}
 	if g := cellAfter("\x1b[9m"); g.Mode&attrStrikethrough == 0 {
 		t.Error("SGR 9 should set strikethrough")
 	}

@@ -49,13 +49,11 @@ func Default() *Config {
 	}
 }
 
-// defaultColors returns geckty's built-in default color scheme: the
-// "glass" preset (see presets.go), chosen as the default rather than left
-// opt-in.
+// defaultColors returns geckty's built-in default color scheme (the
+// "glass" theme values). Chrome tab colors are left empty so the palette
+// layer derives them with glass blends from Background/Foreground.
 func defaultColors() ColorsConfig {
-	c := presets[glassPresetName]
-	c.Preset = glassPresetName
-	return c
+	return builtinThemes[glassThemeName]
 }
 
 // defaultKeybindings avoids plain Ctrl+T/Ctrl+W/Ctrl+C/Ctrl+V: those are

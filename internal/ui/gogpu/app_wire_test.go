@@ -3,6 +3,7 @@ package gogpu
 import (
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/gogpu/gpucontext"
 
@@ -160,8 +161,28 @@ func TestWireLifecycleCallbacksOnFocusForwardsToActiveSession(t *testing.T) {
 
 func TestStartBlinkLoopTogglesAndStops(t *testing.T) {
 	s, app := testUIState(t)
+	s.cfg.Cursor.Blink = true
+	s.cfg.Cursor.IntervalMs = 10
+	stop := s.startBlinkLoop(app)
+	defer stop()
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if app.redrawCount.Load() > 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("blink loop should RequestRedraw within 500ms")
+}
+
+func TestStartBlinkLoopDisabledIsNoop(t *testing.T) {
+	s, app := testUIState(t)
+	s.cfg.Cursor.Blink = false
 	stop := s.startBlinkLoop(app)
 	stop()
+	if app.redrawCount.Load() != 0 {
+		t.Fatal("disabled blink must not redraw")
+	}
 }
 
 func TestWireSessionManagerQuitsWhenLastTabCloses(t *testing.T) {

@@ -13,9 +13,14 @@ import (
 // features they configure are implemented — see defaults.go for values
 // used when a field (or the whole file) is absent.
 type Config struct {
-	Window      WindowConfig     `toml:"window"`
-	Font        FontConfig       `toml:"font"`
-	UIFont      UIFontConfig     `toml:"ui_font"`
+	Window WindowConfig `toml:"window"`
+	Font   FontConfig   `toml:"font"`
+	UIFont UIFontConfig `toml:"ui_font"`
+	// Theme, if set, loads themes/<name>.toml (next to this config file or
+	// under the geckty config dir) or a built-in theme of the same name,
+	// then merges any inline [colors] keys on top — Kitty-style include +
+	// override, not an all-or-nothing preset.
+	Theme       string           `toml:"theme"`
 	Colors      ColorsConfig     `toml:"colors"`
 	Shell       ShellConfig      `toml:"shell"`
 	Selection   SelectionConfig  `toml:"selection"`
@@ -124,21 +129,33 @@ type UIFontConfig struct {
 	Size   float64 `toml:"size"`
 }
 
-// ColorsConfig is the [colors] section: default foreground/background plus
-// the 16-color ANSI palette.
+// ColorsConfig is the [colors] section: terminal palette plus optional
+// chrome (tab bar) colors. Empty chrome keys are derived at the palette
+// layer from Background/Foreground (glass blends). Themes are free-form
+// color maps — see Theme on Config and themes/*.toml — not closed presets.
 type ColorsConfig struct {
-	// Preset, if set, selects a complete built-in color scheme by name
-	// (see presets.go) in place of Foreground/Background/ANSI below —
-	// an alternative to specifying them, not a per-field merge with
-	// them. Empty (the default) means use Foreground/Background/ANSI
-	// directly, as before presets existed.
+	// Preset is deprecated: treated as an alias for Config.Theme when
+	// theme is unset. Prefer top-level theme = "name".
 	Preset     string `toml:"preset"`
 	Foreground string `toml:"foreground"`
 	Background string `toml:"background"`
-	// Selection is the text-selection highlight, an opaque hex color.
-	// Empty falls back to a blend of Foreground in the theme layer.
-	Selection string     `toml:"selection"`
-	ANSI      [16]string `toml:"ansi"`
+	// Selection is the legacy selection-highlight key (opaque hex). Prefer
+	// selection_background; both are accepted, selection_background wins.
+	Selection           string `toml:"selection"`
+	SelectionBackground string `toml:"selection_background"`
+	SelectionForeground string `toml:"selection_foreground"`
+	// Cursor is the caret color; empty uses foreground (overridden by
+	// [cursor].color when that is set).
+	Cursor string `toml:"cursor"`
+	// Tab chrome (Kitty-style keys). Empty → glass-derived from Background.
+	ActiveTabForeground   string     `toml:"active_tab_foreground"`
+	ActiveTabBackground   string     `toml:"active_tab_background"`
+	InactiveTabForeground string     `toml:"inactive_tab_foreground"`
+	InactiveTabBackground string     `toml:"inactive_tab_background"`
+	TabBarBackground      string     `toml:"tab_bar_background"`
+	HoverTabBackground    string     `toml:"hover_tab_background"`
+	PlusButtonBackground  string     `toml:"plus_button_background"`
+	ANSI                  [16]string `toml:"ansi"`
 }
 
 // ShellConfig is the [shell] section.
@@ -243,11 +260,9 @@ func DefaultPath() (string, error) {
 // Load reads and parses the TOML file at path, filling any field absent
 // from the file with its default value.
 //
-// colors.preset is special: Default tags Colors with Preset="glass", but
-// a config file that sets foreground/background/ansi without mentioning
-// preset must keep those explicit colors. If we left Default's Preset
-// set, resolvePreset would wipe the file's palette. So Preset is only
-// resolved when the file actually defines colors.preset.
+// Color resolution is defaults ← theme file/builtin ← inline [colors]
+// (Kitty-style merge). colors.preset is accepted as a deprecated alias
+// for top-level theme when theme is unset.
 func Load(path string) (*Config, error) {
 	cfg := Default()
 	cfg.sourcePath = path
@@ -260,15 +275,32 @@ func Load(path string) (*Config, error) {
 		}
 		return nil, err
 	}
-	if !md.IsDefined("colors", "preset") {
-		cfg.Colors.Preset = ""
-	}
-	resolved, err := resolvePreset(cfg.Colors)
-	if err != nil {
+	if err := resolveColors(cfg, md, path); err != nil {
 		return nil, err
 	}
-	cfg.Colors = resolved
 	return cfg, nil
+}
+
+// resolveColors rebuilds cfg.Colors as defaults ← theme ← file overrides.
+func resolveColors(cfg *Config, md toml.MetaData, configPath string) error {
+	themeName := cfg.Theme
+	if themeName == "" && md.IsDefined("colors", "preset") && cfg.Colors.Preset != "" {
+		themeName = cfg.Colors.Preset
+	}
+	cfg.Theme = themeName
+	cfg.Colors.Preset = ""
+
+	overrides := colorsOverridesFrom(md, cfg.Colors)
+	merged := defaultColors()
+	if themeName != "" {
+		themeColors, err := loadThemeColors(themeName, configPath)
+		if err != nil {
+			return err
+		}
+		merged = mergeColors(merged, themeColors)
+	}
+	cfg.Colors = mergeColors(merged, overrides)
+	return nil
 }
 
 // EnsureDefaultFile writes the default config to path if nothing exists

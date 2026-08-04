@@ -149,3 +149,90 @@ func TestHandleTextInputWritesToActiveSession(t *testing.T) {
 	s, _ := testUIStateWithTab(t)
 	s.handleTextInput("x") // must not panic; active session receives the byte
 }
+
+func TestSetKeyEchoOnlyKeepsAlphanumeric(t *testing.T) {
+	s, _ := testUIState(t)
+	s.setKeyEcho("A")
+	if s.keyEcho != "A" || s.keyEchoAt.IsZero() {
+		t.Fatalf("alphanumeric echo = %q, want A with timestamp", s.keyEcho)
+	}
+	s.setKeyEcho("\x1b[A")
+	if s.keyEcho != "" {
+		t.Fatalf("escape sequence must clear keyEcho, got %q", s.keyEcho)
+	}
+	s.setKeyEcho("")
+	if s.keyEcho != "" {
+		t.Fatal("empty setKeyEcho should clear")
+	}
+	s.setKeyEcho("!")
+	if s.keyEcho != "" {
+		t.Fatalf("punctuation must not stick as keyEcho, got %q", s.keyEcho)
+	}
+}
+
+func TestHandleKeyPressArrowWritesWithoutStickyEcho(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	keymap, err := NewKeymap(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.keymap = keymap
+	s.handleKeyPress(gpucontext.KeyUp, 0)
+	if s.keyEcho != "" {
+		t.Fatalf("Up must not leave sticky keyEcho, got %q", s.keyEcho)
+	}
+}
+
+func TestHandleKeyReleaseLegacyIsNoop(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	// KeyLegacy (default): EncodeKitty returns ok=false for releases.
+	s.handleKeyRelease(gpucontext.KeyUp, 0)
+}
+
+func TestHandleKeyPressNoActiveTabIsNoop(t *testing.T) {
+	s, _ := testUIState(t)
+	keymap, err := NewKeymap(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.keymap = keymap
+	s.handleKeyPress(gpucontext.KeyEnter, 0)
+	s.handleKeyRelease(gpucontext.KeyEnter, 0)
+}
+
+func TestContentPadDp(t *testing.T) {
+	s, _ := testUIState(t)
+	s.cfg = nil
+	if s.contentPadDp() != chromeContentPadDp {
+		t.Fatalf("nil cfg pad = %d, want default %d", s.contentPadDp(), chromeContentPadDp)
+	}
+	s.cfg = config.Default()
+	s.cfg.Window.Padding = 12
+	if s.contentPadDp() != 12 {
+		t.Fatalf("pad = %d, want 12", s.contentPadDp())
+	}
+}
+
+func TestApplyPendingConfig(t *testing.T) {
+	s, _ := testUIState(t)
+	s.applyPendingConfig() // nil pending — no-op
+
+	cfg := config.Default()
+	cfg.Window.Padding = 20
+	s.pendingCfg.Store(cfg)
+	s.applyPendingConfig()
+	if s.cfg.Window.Padding != 20 {
+		t.Fatalf("padding = %d, want 20 after applyPendingConfig", s.cfg.Window.Padding)
+	}
+	if s.pendingCfg.Load() != nil {
+		t.Fatal("pendingCfg should be cleared")
+	}
+}
+
+func TestHandleKeyReleaseWithKittyEventTypes(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	// Enable Disambiguate + Report event types via CSI > flags u push.
+	active.Term.Parse([]byte("\x1b[>3u"))
+	s.handleKeyRelease(gpucontext.KeyEscape, 0) // must not panic; may write CSI-u release
+}

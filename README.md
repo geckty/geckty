@@ -24,6 +24,16 @@ go build ./cmd/geckty
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
 
+## Configuration
+
+Copy [`config.example.toml`](config.example.toml) to
+`~/.config/geckty/config.toml`. Colors are free-form keys under `[colors]`
+(Kitty/Rio style). Optionally set `theme = "name"` to load
+`themes/name.toml` next to the config (or under `~/.config/geckty/themes/`);
+inline `[colors]` keys merge on top. See [`themes/glass.toml`](themes/glass.toml)
+for a theme-file example. Tab chrome colors (`active_tab_background`, …)
+are optional — unset keys keep the glass-derived look.
+
 ## License
 
 [MIT](LICENSE)

@@ -320,7 +320,7 @@ func (p *Painter) paintCursor(buf []byte, frameW int, term *vt.Terminal, originX
 	cursor := term.Cursor()
 	x0 := originX + cursor.C*p.CellWidth
 	y0 := originY + cursor.R*p.CellHeight
-	fg := toRGBA(p.Palette.Foreground)
+	fg := toRGBA(p.Palette.Cursor)
 
 	switch cursor.Style {
 	case emu.CursorStyleUnderline, emu.CursorStyleBlinkUnderline:

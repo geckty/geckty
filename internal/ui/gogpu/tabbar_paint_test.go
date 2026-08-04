@@ -146,6 +146,33 @@ func TestPaintTabAndPlusButton(t *testing.T) {
 	tb.paintPlusButton(buf, 200, pal, 150, 36, 32, 3, false)
 }
 
+func TestPaintTabUsesExplicitActiveBackground(t *testing.T) {
+	tb := testTabBar()
+	pal := testPalette()
+	pal.ActiveTabBG = color.NRGBA{R: 0xaa, G: 0xbb, B: 0xcc, A: 0xff}
+	pal.TabBarBG = color.NRGBA{R: 0x11, G: 0x11, B: 0x11, A: 0xff}
+	tab := newTestTab(t, 1, t.TempDir())
+
+	buf := newBuf(200, 40)
+	// Fill bar first so we can distinguish pill pixels.
+	fillRect(buf, 200, 0, 0, 200, 40, toRGBA(pal.TabBarBG))
+	tb.paintTab(buf, 200, 40, pal, tab, 0, 100, 32, 3, true, false, false, false, false)
+
+	want := toRGBA(pal.ActiveTabBG)
+	found := false
+	for y := 4; y < 28 && !found; y++ {
+		for x := 10; x < 90; x++ {
+			if pixelAt(buf, 200, x, y) == want {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected active tab pill to use explicit ActiveTabBG %v", want)
+	}
+}
+
 func TestPaintStatus(t *testing.T) {
 	tb := testTabBar()
 	pal := testPalette()

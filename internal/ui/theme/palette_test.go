@@ -10,10 +10,10 @@ import (
 	"github.com/geckty/geckty/internal/vt/emu"
 )
 
-// TestGlassPresetParses loads the default glass preset via config.Load.
-func TestGlassPresetParses(t *testing.T) {
+// TestGlassThemeParses loads the built-in glass theme via deprecated preset alias.
+func TestGlassThemeParses(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte("[colors]\npreset = \"glass\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("theme = \"glass\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.Load(path)
@@ -22,17 +22,22 @@ func TestGlassPresetParses(t *testing.T) {
 	}
 	p, err := NewPalette(cfg.Colors)
 	if err != nil {
-		t.Fatalf("NewPalette(glass preset): %v", err)
+		t.Fatalf("NewPalette(glass theme): %v", err)
 	}
 	if p.Background != (color.NRGBA{R: 0x1d, G: 0x1f, B: 0x22, A: 0xff}) { // #1d1f22
-		t.Fatalf("glass preset Background = %v, want #1d1f22", p.Background)
+		t.Fatalf("glass theme Background = %v, want #1d1f22", p.Background)
 	}
-	// Terminal.app Pro text #F4F4F4 / selection #525252
 	if p.Foreground != (color.NRGBA{R: 0xf4, G: 0xf4, B: 0xf4, A: 0xff}) {
-		t.Fatalf("glass preset Foreground = %v, want #f4f4f4", p.Foreground)
+		t.Fatalf("glass theme Foreground = %v, want #f4f4f4", p.Foreground)
 	}
 	if p.Selection != (color.NRGBA{R: 0x52, G: 0x52, B: 0x52, A: 0xff}) {
-		t.Fatalf("glass preset Selection = %v, want #525252", p.Selection)
+		t.Fatalf("glass theme Selection = %v, want #525252", p.Selection)
+	}
+	if p.Cursor != p.Foreground {
+		t.Fatalf("default Cursor = %v, want Foreground", p.Cursor)
+	}
+	if p.ActiveTabBG.A == 0 || p.TabBarBG.A == 0 {
+		t.Fatal("chrome slots should be derived when unset")
 	}
 }
 
@@ -152,6 +157,7 @@ func TestNewPaletteRejectsInvalidBackground(t *testing.T) {
 func TestNewPaletteRejectsInvalidSelection(t *testing.T) {
 	cfg := config.Default().Colors
 	cfg.Selection = "not-a-color"
+	cfg.SelectionBackground = ""
 	if _, err := NewPalette(cfg); err == nil {
 		t.Fatal("expected error for invalid selection")
 	}
@@ -160,6 +166,7 @@ func TestNewPaletteRejectsInvalidSelection(t *testing.T) {
 func TestNewPaletteDefaultsSelectionWhenEmpty(t *testing.T) {
 	cfg := config.Default().Colors
 	cfg.Selection = ""
+	cfg.SelectionBackground = ""
 	p, err := NewPalette(cfg)
 	if err != nil {
 		t.Fatalf("NewPalette: %v", err)
@@ -167,6 +174,53 @@ func TestNewPaletteDefaultsSelectionWhenEmpty(t *testing.T) {
 	want := color.NRGBA{R: 0x52, G: 0x52, B: 0x52, A: 0xff}
 	if p.Selection != want {
 		t.Fatalf("Selection = %v, want fallback mid-grey %v", p.Selection, want)
+	}
+}
+
+func TestNewPaletteExplicitChromeAndCursor(t *testing.T) {
+	cfg := config.Default().Colors
+	cfg.Cursor = "#ff0000"
+	cfg.ActiveTabBackground = "#00ff00"
+	cfg.TabBarBackground = "#0000ff"
+	cfg.SelectionBackground = "#112233"
+	cfg.SelectionForeground = "#445566"
+	p, err := NewPalette(cfg)
+	if err != nil {
+		t.Fatalf("NewPalette: %v", err)
+	}
+	if p.Cursor != (color.NRGBA{R: 0xff, A: 0xff}) {
+		t.Fatalf("Cursor = %v, want #ff0000", p.Cursor)
+	}
+	if p.ActiveTabBG != (color.NRGBA{G: 0xff, A: 0xff}) {
+		t.Fatalf("ActiveTabBG = %v, want #00ff00", p.ActiveTabBG)
+	}
+	if p.TabBarBG != (color.NRGBA{B: 0xff, A: 0xff}) {
+		t.Fatalf("TabBarBG = %v, want #0000ff", p.TabBarBG)
+	}
+	if p.Selection != (color.NRGBA{R: 0x11, G: 0x22, B: 0x33, A: 0xff}) {
+		t.Fatalf("Selection = %v", p.Selection)
+	}
+	if p.SelectionFG != (color.NRGBA{R: 0x44, G: 0x55, B: 0x66, A: 0xff}) {
+		t.Fatalf("SelectionFG = %v", p.SelectionFG)
+	}
+	if fill := p.TabFill(true, false, false); fill != p.ActiveTabBG {
+		t.Fatalf("TabFill(active) = %v, want ActiveTabBG", fill)
+	}
+}
+
+func TestApplyCursorColor(t *testing.T) {
+	p := testPalette(t)
+	if err := ApplyCursorColor(&p, "#00ff00"); err != nil {
+		t.Fatal(err)
+	}
+	if p.Cursor != (color.NRGBA{G: 0xff, A: 0xff}) {
+		t.Fatalf("Cursor = %v after ApplyCursorColor", p.Cursor)
+	}
+	if err := ApplyCursorColor(&p, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyCursorColor(&p, "bad"); err == nil {
+		t.Fatal("expected error for bad cursor.color")
 	}
 }
 

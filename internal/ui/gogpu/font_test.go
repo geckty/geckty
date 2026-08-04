@@ -56,6 +56,46 @@ func TestConfiguredFamilyPathsEmptyFamilyStillProducesDirCandidates(t *testing.T
 	}
 }
 
+func TestConfiguredFamilyStylePathsBoldItalic(t *testing.T) {
+	bold := configuredFamilyStylePaths("JetBrains Mono", "/home/u", styleBold)
+	italic := configuredFamilyStylePaths("JetBrains Mono", "/home/u", styleItalic)
+	bi := configuredFamilyStylePaths("JetBrains Mono", "/home/u", styleBoldItalic)
+	for _, paths := range [][]string{bold, italic, bi} {
+		if len(paths) == 0 {
+			t.Fatal("expected style-specific candidate paths")
+		}
+	}
+	joined := strings.Join(bold, "\n")
+	if !strings.Contains(joined, "JetBrainsMono-Bold.ttf") {
+		t.Fatalf("bold paths missing Bold variant: %v", bold)
+	}
+}
+
+func TestPlatformStyleCandidatesNonEmpty(t *testing.T) {
+	for _, role := range []fontRole{roleMono, roleUI} {
+		for _, style := range []fontStyle{styleRegular, styleBold, styleItalic, styleBoldItalic} {
+			paths := platformStyleCandidates(style, role)
+			if len(paths) == 0 {
+				t.Fatalf("platformStyleCandidates(%v,%v) empty", style, role)
+			}
+		}
+	}
+}
+
+func TestLoadFontCandidatesIncludesEmbeddedFallback(t *testing.T) {
+	cands := loadFontCandidates("Nonexistent Font Family XYZ", roleMono)
+	for _, style := range []fontStyle{styleRegular, styleBold, styleItalic, styleBoldItalic} {
+		if len(cands[style]) == 0 {
+			t.Fatalf("style %v: expected candidates including embedded fallback", style)
+		}
+		// Last entry is always the embedded font bytes.
+		last := cands[style][len(cands[style])-1]
+		if len(last) == 0 {
+			t.Fatalf("style %v: embedded fallback empty", style)
+		}
+	}
+}
+
 func TestLoadFontBundleEmptyFamilyUsesEmbeddedFontsForEveryStyle(t *testing.T) {
 	for _, role := range []fontRole{roleMono, roleUI} {
 		b := loadFontBundle("", 13, 1, role)
