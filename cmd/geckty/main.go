@@ -10,6 +10,7 @@ import (
 	"github.com/glaciforge/slogsafe"
 
 	"github.com/geckty/geckty/internal/config"
+	"github.com/geckty/geckty/internal/logx"
 	"github.com/geckty/geckty/internal/ui"
 	"github.com/geckty/geckty/internal/ui/gogpu"
 )
@@ -59,19 +60,43 @@ func main() {
 		log.FatalContext(ctx, "parse log level", slogsafe.Err(err))
 	}
 	log.SetLevel(logLevel)
+	ctx, _ = logx.Op(ctx, "geckty.main")
+
+	// Keep the running log level in sync with a hot-reloaded config.toml
+	// (see Config.HotReload) — -log-level still wins over log_level even
+	// after a reload, matching the precedence used above at startup.
+	// stopLogLevelWatch is called explicitly (not deferred) after
+	// backend.Run below, since a defer wouldn't run before os.Exit on the
+	// error path.
+	stopLogLevelWatch := func() {}
+	if cfg.HotReload {
+		stopLogLevelWatch = cfg.Watch(func(reloaded *config.Config, err error) {
+			if err != nil {
+				slog.WarnContext(ctx, "reload config", slogsafe.Err(err))
+				return
+			}
+			if *logLevelFlag != "" {
+				return
+			}
+			lvl, err := config.ParseLogLevel(reloaded.LogLevel)
+			if err != nil {
+				slog.WarnContext(ctx, "reload config: invalid log_level, keeping previous", slogsafe.Err(err))
+				return
+			}
+			log.SetLevel(lvl)
+		})
+	}
 
 	// Run through the Backend interface, not the concrete Run function
 	// directly — main.go doesn't need to know the UI toolkit, only that
-	// something implements Backend. gogpu.Backend replaces the former
-	// gio-based ui.GioBackend (see internal/ui/gogpu's package doc for
-	// why: a reproducible gio D3D11 rendering bug on Windows). Unlike gio,
-	// gogpu's App.Run is itself the platform event pump, so it's called
-	// directly on the main goroutine rather than via a background
-	// goroutine plus a separate app.Main() call.
+	// something implements Backend. gogpu.Backend's App.Run is itself the
+	// platform event pump, so it's called directly on the main goroutine.
 	var backend ui.Backend = gogpu.Backend{}
 
-	if err := backend.Run(cfg); err != nil {
-		slog.ErrorContext(ctx, "geckty exited", slogsafe.Err(err))
+	runErr := backend.Run(cfg)
+	stopLogLevelWatch()
+	if runErr != nil {
+		slog.ErrorContext(ctx, "geckty exited", slogsafe.Err(runErr))
 		os.Exit(1)
 	}
 }

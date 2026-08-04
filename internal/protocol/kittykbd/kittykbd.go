@@ -169,6 +169,13 @@ func Encode(flags emu.KeyProtocol, ev Event) (out []byte, ok bool) {
 	}
 
 	reportEvents := flags&emu.KeyReportEventTypes != 0
+	// Without Report event types, only presses are reported (repeat is
+	// treated as press). A release must not fall through to press-identical
+	// CSI-u — the UI wires OnKeyRelease unconditionally, and duplicating
+	// the press encoding would double every functional key (arrows, Esc, …).
+	if !ev.Pressed && !reportEvents {
+		return nil, false
+	}
 
 	if b, isLegacy := legacyBytes[ev.Key]; isLegacy {
 		// Legacy keys don't disambiguate and (per the spec) don't

@@ -51,9 +51,7 @@ var ctrlLetterKeys = map[gpucontext.Key]byte{
 //
 // gpucontext.Key is a platform-independent, physical/positional key code
 // (USB-HID-usage-code-like) delivered via a separate SetOnKeyPress
-// callback, unlike gio's single key.Event carrying a layout-normalized
-// key.Name — text arrives via a distinct SetOnTextInput callback, same
-// split as gio's key.Event/key.EditEvent.
+// callback — text arrives via a distinct SetOnTextInput callback.
 func EncodeKey(k gpucontext.Key, mods gpucontext.Modifiers) (out []byte, ok bool) {
 	if mods.HasControl() {
 		if n, ok := ctrlLetterKeys[k]; ok {

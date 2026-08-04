@@ -6,7 +6,7 @@ import (
 )
 
 func TestSelectionNoneByDefault(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	if _, _, ok := s.Selection(); ok {
 		t.Fatal("expected no selection by default")
 	}
@@ -16,7 +16,7 @@ func TestSelectionNoneByDefault(t *testing.T) {
 }
 
 func TestSelectionStartGivesZeroWidthSelection(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.StartSelection(3, 1)
 	start, end, ok := s.Selection()
 	if !ok {
@@ -28,7 +28,7 @@ func TestSelectionStartGivesZeroWidthSelection(t *testing.T) {
 }
 
 func TestSelectionExtendForward(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.StartSelection(1, 0)
 	s.ExtendSelection(5, 0)
 	start, end, ok := s.Selection()
@@ -43,7 +43,7 @@ func TestSelectionExtendForward(t *testing.T) {
 func TestSelectionExtendBackwardNormalizes(t *testing.T) {
 	// Dragging up/left of the anchor must still yield start <= end in
 	// reading order, not a "negative width" selection.
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.StartSelection(5, 1)
 	s.ExtendSelection(1, 0)
 	start, end, ok := s.Selection()
@@ -56,7 +56,7 @@ func TestSelectionExtendBackwardNormalizes(t *testing.T) {
 }
 
 func TestExtendSelectionWithoutStartIsNoOp(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.ExtendSelection(5, 5)
 	if _, _, ok := s.Selection(); ok {
 		t.Fatal("expected ExtendSelection without a prior StartSelection to be a no-op")
@@ -64,7 +64,7 @@ func TestExtendSelectionWithoutStartIsNoOp(t *testing.T) {
 }
 
 func TestClearSelection(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.StartSelection(0, 0)
 	s.ClearSelection()
 	if _, _, ok := s.Selection(); ok {
@@ -73,7 +73,7 @@ func TestClearSelection(t *testing.T) {
 }
 
 func TestStartSelectionReplacesPrevious(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.StartSelection(0, 0)
 	s.ExtendSelection(5, 0)
 	s.StartSelection(2, 1) // a new click elsewhere replaces the old selection
@@ -91,7 +91,7 @@ func TestEndSelectionDropsAPlainClick(t *testing.T) {
 	// called) is not a meaningful selection — leaving one behind was a
 	// real, reported bug (every plain click left a lingering 1-character
 	// highlight).
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.StartSelection(3, 0)
 	s.EndSelection()
 	if _, _, ok := s.Selection(); ok {
@@ -100,7 +100,7 @@ func TestEndSelectionDropsAPlainClick(t *testing.T) {
 }
 
 func TestEndSelectionKeepsARealDrag(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.StartSelection(1, 0)
 	s.ExtendSelection(5, 0)
 	s.EndSelection()
@@ -118,7 +118,7 @@ func TestEndSelectionKeepsADragThatReturnsToTheAnchorCell(t *testing.T) {
 	// still a real drag gesture (ExtendSelection was called), not a
 	// plain click — anchor == head here must not be confused with "never
 	// dragged".
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.StartSelection(3, 0)
 	s.ExtendSelection(7, 0)
 	s.ExtendSelection(3, 0) // back to the anchor cell
@@ -131,7 +131,7 @@ func TestEndSelectionKeepsADragThatReturnsToTheAnchorCell(t *testing.T) {
 func TestSelectWordBasic(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 20, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 20, 2, func() { dirty <- struct{}{} })
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -154,7 +154,7 @@ func TestSelectWordBasic(t *testing.T) {
 func TestSelectWordSecondWord(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 20, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 20, 2, func() { dirty <- struct{}{} })
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -173,7 +173,7 @@ func TestSelectWordSecondWord(t *testing.T) {
 func TestSelectWordOnWhitespaceSelectsJustThatCell(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 20, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 20, 2, func() { dirty <- struct{}{} })
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -192,7 +192,7 @@ func TestSelectWordOnWhitespaceSelectsJustThatCell(t *testing.T) {
 func TestSelectWordCustomWordChars(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 20, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 20, 2, func() { dirty <- struct{}{} })
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -222,7 +222,7 @@ func TestEndSelectionKeepsASingleCharacterWordSelection(t *testing.T) {
 	// anchor/head equality.
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 20, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 20, 2, func() { dirty <- struct{}{} })
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -236,7 +236,7 @@ func TestEndSelectionKeepsASingleCharacterWordSelection(t *testing.T) {
 }
 
 func TestRegisterClickDetectsDoubleClick(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	if s.RegisterClick(3, 1) {
 		t.Fatal("first click must never register as a double-click")
 	}
@@ -246,7 +246,7 @@ func TestRegisterClickDetectsDoubleClick(t *testing.T) {
 }
 
 func TestRegisterClickDifferentCellIsNotADouble(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.RegisterClick(3, 1)
 	if s.RegisterClick(4, 1) {
 		t.Fatal("a click in a different cell must not register as a double-click")
@@ -254,7 +254,7 @@ func TestRegisterClickDifferentCellIsNotADouble(t *testing.T) {
 }
 
 func TestRegisterClickTooSlowIsNotADouble(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.selMu.Lock()
 	s.lastClick = clickRecord{at: time.Now().Add(-doubleClickWindow * 2), pos: cellPos{3, 1}}
 	s.selMu.Unlock()
@@ -265,7 +265,7 @@ func TestRegisterClickTooSlowIsNotADouble(t *testing.T) {
 }
 
 func TestRegisterClickResetsAfterADouble(t *testing.T) {
-	s := newWithPTY(newFakePTY(), 10, 2, nil, nil)
+	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.RegisterClick(3, 1)
 	if !s.RegisterClick(3, 1) {
 		t.Fatal("expected the second click to register as a double-click")
@@ -281,7 +281,7 @@ func TestRegisterClickResetsAfterADouble(t *testing.T) {
 func TestSelectedTextSingleLine(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 20, 3, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 20, 3, func() { dirty <- struct{}{} })
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -301,7 +301,7 @@ func TestSelectedTextSingleLine(t *testing.T) {
 func TestSelectedTextMultiLine(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 10, 3, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 10, 3, func() { dirty <- struct{}{} })
 	go s.Run()
 	defer func() { _ = s.Close() }()
 
@@ -321,7 +321,7 @@ func TestSelectedTextMultiLine(t *testing.T) {
 func TestSelectedTextTrimsTrailingBlanks(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 8)
-	s := newWithPTY(p, 20, 2, func() { dirty <- struct{}{} }, nil)
+	s := newTestSession(p, 20, 2, func() { dirty <- struct{}{} })
 	go s.Run()
 	defer func() { _ = s.Close() }()
 

@@ -3,6 +3,8 @@
 package session
 
 import (
+	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/geckty/geckty/internal/pty"
@@ -16,6 +18,19 @@ type Config struct {
 	Env        []string
 	Dir        string
 	Cols, Rows int
+
+	// HistoryLimit caps scrollback physical lines (0 = unlimited).
+	HistoryLimit int
+
+	// Clipboard controls OSC 52 policy.
+	Clipboard ClipboardPolicy
+
+	// ShellIntegration is forwarded to pty.Config.Integration — see that
+	// field's doc comment. Only meaningful when Command is empty.
+	ShellIntegration bool
+
+	// Log is optional; nil uses slog.Default().
+	Log *slog.Logger
 
 	// OnDirty is called (from the read goroutine) whenever new terminal
 	// output may require a repaint. It must not block.
@@ -53,6 +68,7 @@ type Session struct {
 // New spawns a shell per cfg and wires its PTY output into a VT terminal of
 // the requested size.
 func New(cfg Config) (*Session, error) {
+	const op = "session.New"
 	cols, rows := cfg.Cols, cfg.Rows
 	if cols == 0 {
 		cols = 80
@@ -62,36 +78,47 @@ func New(cfg Config) (*Session, error) {
 	}
 
 	p, err := pty.Open(pty.Config{
-		Command: cfg.Command,
-		Env:     cfg.Env,
-		Dir:     cfg.Dir,
-		Cols:    uint16(cols),
-		Rows:    uint16(rows),
+		Command:     cfg.Command,
+		Env:         cfg.Env,
+		Dir:         cfg.Dir,
+		Cols:        uint16(cols),
+		Rows:        uint16(rows),
+		Integration: cfg.ShellIntegration,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	s := newWithPTY(p, cols, rows, cfg.OnDirty, cfg.OnExit)
+	s := newWithPTY(p, cols, rows, cfg)
 	s.Dir = cfg.Dir
 	return s, nil
 }
 
 // newWithPTY builds a Session around an already-open PTY, letting tests
 // substitute a fake pty.PTY instead of spawning a real shell.
-func newWithPTY(p pty.PTY, cols, rows int, onDirty func(), onExit func(error)) *Session {
+func newWithPTY(p pty.PTY, cols, rows int, cfg Config) *Session {
+	log := cfg.Log
+	if log == nil {
+		log = slog.Default()
+	}
 	s := &Session{
 		PTY:     p,
-		onDirty: onDirty,
-		onExit:  onExit,
-		osc52:   newOSC52Bridge(),
+		onDirty: cfg.OnDirty,
+		onExit:  cfg.OnExit,
+		osc52:   newOSC52Bridge(cfg.Clipboard, log.With(slog.String("op", "session.osc52"))),
 	}
-	// emu's own replies (DA/DSR responses, etc.) are written via
-	// s.Write, the same guarded path input/protocol encoders use, so
-	// they can never interleave mid-sequence with a keystroke or paste.
-	s.Term = vt.New(cols, rows, writerFunc(s.Write), s.osc52)
+	s.Term = vt.New(cols, rows, writerFunc(s.Write), s.osc52, cfg.HistoryLimit)
 	s.gfx = newGraphics(s)
 	return s
+}
+
+// newTestSession builds a Session around p for tests. OnExit is left nil —
+// tests that need exit handling call SetOnExit after construction.
+func newTestSession(p pty.PTY, cols, rows int, onDirty func()) *Session {
+	return newWithPTY(p, cols, rows, Config{
+		OnDirty:   onDirty,
+		Clipboard: ClipboardPolicy{WriteAllow: true, MaxSize: defaultMaxOSC52},
+	})
 }
 
 // SetOnExit replaces the exit callback. Must be called before Run starts

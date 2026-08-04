@@ -1,0 +1,21 @@
+# Example theme file. Copy to ~/.config/geckty/themes/glass.toml
+# (or next to your config.toml under themes/) and set:
+#   theme = "glass"
+# in config.toml. Inline [colors] keys merge on top of this file.
+
+[colors]
+foreground = "#f4f4f4"
+background = "#1d1f22"
+selection_background = "#525252"
+ansi = [
+  "#000000", "#c23621", "#25a250", "#caca33",
+  "#492ee1", "#d338d3", "#33bbc8", "#cbcccc",
+  "#818383", "#fc391f", "#31e722", "#eaec23",
+  "#5833ff", "#f935f8", "#14f0f0", "#e9ebeb",
+]
+# Optional chrome overrides (unset → glass blends from background):
+# active_tab_foreground = "#f4f4f4"
+# active_tab_background = "#55585c"
+# inactive_tab_foreground = "#a0a0a0"
+# inactive_tab_background = "#2a2c30"
+# tab_bar_background = "#222428"

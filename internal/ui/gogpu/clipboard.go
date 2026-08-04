@@ -15,14 +15,12 @@ type clipboardProvider interface {
 	ClipboardRead() (string, error)
 }
 
-// clipboardWrite puts text on the system clipboard. On macOS, pbcopy is
-// tried first — per termizard's own field experience, gogpu's NSPasteboard
-// writes can appear to succeed while leaving the system pasteboard
-// unchanged. Falls back to the other path on error either way.
+// clipboardWrite puts text on the system clipboard. Empty text clears the
+// pasteboard when the native backend supports it (OSC 52 clear). On macOS,
+// pbcopy is tried first — per termizard's field experience, gogpu's
+// NSPasteboard writes can appear to succeed while leaving the system
+// pasteboard unchanged. Falls back to the other path on error either way.
 func clipboardWrite(app clipboardProvider, text string) error {
-	if text == "" {
-		return nil
-	}
 	if runtime.GOOS == "darwin" {
 		if err := clipboardWriteNative(text); err == nil {
 			return nil

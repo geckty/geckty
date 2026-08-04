@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"strings"
+	"time"
 
 	"golang.org/x/image/font"
 
@@ -14,7 +15,7 @@ import (
 )
 
 // Tab-bar sizing, in logical (DPI-independent) pixels — same values as the
-// old gio-based chrome.Height/MinTabWidth/etc, converted to device pixels
+// chrome.Height/MinTabWidth/etc, converted to device pixels
 // by the caller (app.go) via dpToPx before reaching chrome.ComputeGeometry,
 // which is pure-Go and reused unchanged from the old chrome package.
 const (
@@ -29,11 +30,7 @@ const (
 
 	tabTitleMaxRunes = 28 // longest title before truncateTitle elides its middle
 
-	inactiveFGDim = 0.32 // how far an inactive tab's title dims toward the bar background
-	hoverFGDim    = 0.10 // how far a hovered (but inactive) tab's title dims
-
-	glassPlusDefault = 0.10 // "+" chip's glass fill factor at rest — chrome has no plus-button concept, so this stays local
-	glassPlusHover   = 0.24 // "+" chip's glass fill factor while hovered
+	glassPlusHover = 0.24 // "+" chip glass fill while hovered (rest uses palette.PlusButtonBG)
 
 	titleCloseReserveDp = 4 // gap reserved after the close-zone before centered title text may start
 	closeArmLenDp       = 4 // close "×" per-arm half-length
@@ -41,7 +38,16 @@ const (
 	plusChipMarginDp    = 2 // gap between the "+" chip circle and the bar edges
 	plusArmLenDp        = 5 // "+" arm half-length — 1px larger than closeArmLenDp since the "+" sits in a bigger chip and reads too small at the same size
 	plusArmThicknessDp  = 2 // "+" stroke — thicker than closeArmThicknessDp to stay balanced against the larger arm length
+
+	commandDotRadiusDp = 3 // "command running/finished" indicator dot radius, see commandIndicatorColor
 )
+
+// commandIndicatorFade is how long a finished command's success/failure dot
+// (see commandIndicatorColor) stays visible on its tab before fading back to
+// nothing — a permanent per-tab badge that accumulates forever would be
+// noise; a command that's still running has no such timeout, it stays lit
+// until OSC 133;D fires.
+const commandIndicatorFade = 3 * time.Second
 
 // dpToPx converts a logical (DPI-independent) pixel size to device pixels
 // at the given scale factor, rounding half up rather than truncating so
@@ -97,7 +103,7 @@ func (s *uiState) tabBarHeightPx() int {
 // chrome package's pure-Go geometry/hit-test functions (ComputeGeometry,
 // TabAtScrolledPinned, DropIndexByOverlap, VisualTabSlot, etc.) and its
 // glass/dim color-blend helpers (GlassStyle, GlassFill, DimFG) — all
-// unchanged, already gio-free — and adding only the paint side.
+// unchanged — this file adds only the paint side.
 type TabBar struct {
 	Face   font.Face // tab-bar UI font face, at its own (smaller) size
 	Ascent int
@@ -187,7 +193,7 @@ func (tb *TabBar) measureText(s string) int {
 // visibility lever for the tab strip itself: pass nil to paint/reserve no
 // tab pills regardless of how many sessions are actually open.
 func (tb *TabBar) Layout(buf []byte, frameW, frameH, barH int, pal theme.Palette, tabs []session.Tab, activeID int, statusText string, drag chrome.DragVisual, hoverPlus, showPlus bool) {
-	barBG := toRGBA(chrome.GlassFill(pal.Background, chrome.GlassBarLift))
+	barBG := toRGBA(pal.TabBarBG)
 	fillRect(buf, frameW, 0, 0, frameW, barH, barBG)
 
 	minTabW := dpToPx(MinTabWidthDp, tb.Scale)
@@ -262,21 +268,14 @@ func (tb *TabBar) paintTab(buf []byte, frameW, frameH int, pal theme.Palette, t 
 	rx0, ry0, rx1, ry1 := x0+inset, vpad, x0+w-inset, h-vpad
 	if rx1 > rx0 && ry1 > ry0 {
 		radius := (ry1 - ry0) / 2
-		fill := chrome.GlassFill(pal.Background, chrome.GlassStyle(active, hoverStyle, dragging))
-		fillC := toRGBA(fill)
+		fillC := toRGBA(pal.TabFill(active, hoverStyle, dragging))
 		if dragging {
 			fillC.A = chrome.GlassDragA
 		}
 		fillRoundRect(buf, frameW, rx0, ry0, rx1, ry1, radius, fillC)
 	}
 
-	fg := pal.Foreground
-	switch {
-	case !active && !dragging && hoverStyle:
-		fg = chrome.DimFG(pal.Foreground, pal.Background, hoverFGDim)
-	case !active && !dragging:
-		fg = chrome.DimFG(pal.Foreground, pal.Background, inactiveFGDim)
-	}
+	fg := pal.TabTitleFG(active, hoverStyle, dragging)
 
 	// Title is centered in the space left after the tab's side insets —
 	// and, when this tab can ever show a close ×, after its zone too (the
@@ -305,7 +304,8 @@ func (tb *TabBar) paintTab(buf []byte, frameW, frameH int, pal theme.Palette, t 
 	title := truncateTitle(tabTitle(t))
 	tb.drawTextCentered(buf, frameW, frameH, title, titleX0, 0, titleWidth, h, toRGBA(fg))
 
-	if showCloseGlyph {
+	switch {
+	case showCloseGlyph:
 		closeFG := toRGBA(chrome.DimFG(fg, pal.Background, 0.15))
 		ccx, ccy := x0+edgePad+zoneW/2, h/2
 		armLen := dpToPx(closeArmLenDp, tb.Scale)
@@ -317,6 +317,42 @@ func (tb *TabBar) paintTab(buf []byte, frameW, frameH int, pal theme.Palette, t 
 			thickness = 1
 		}
 		fillDiagonalCross(buf, frameW, ccx, ccy, armLen, thickness, closeFG)
+	case reserveClose:
+		// The close ×'s zone sits empty whenever it isn't hovered — reuse
+		// it for the OSC 133 "command running" indicator rather than
+		// reserving separate space that would eat into the title's own
+		// (already narrow) budget.
+		if dot, ok := commandIndicatorColor(t.Session, pal); ok {
+			cx, cy := x0+edgePad+zoneW/2, h/2
+			r := dpToPx(commandDotRadiusDp, tb.Scale)
+			if r < 2 {
+				r = 2
+			}
+			fillRoundRect(buf, frameW, cx-r, cy-r, cx+r, cy+r, r, dot)
+		}
+	}
+}
+
+// commandIndicatorColor reports the color a tab's OSC 133 status indicator
+// should paint — its tab-bar pill dot (see paintTab) and the active tab's
+// window-border highlight (see paintCommandBorder) share this — and false
+// when nothing should be drawn: no command has run yet, or the last one
+// finished more than commandIndicatorFade ago.
+func commandIndicatorColor(sess *session.Session, pal theme.Palette) (color.RGBA, bool) {
+	sess.Term.RLock()
+	cmd := sess.Term.CommandState()
+	sess.Term.RUnlock()
+
+	switch {
+	case cmd.Running:
+		return toRGBA(pal.ANSI[6]), true // cyan: in progress
+	case cmd.ExitCode != nil && time.Since(cmd.FinishedAt) < commandIndicatorFade:
+		if *cmd.ExitCode == 0 {
+			return toRGBA(pal.ANSI[2]), true // green: succeeded
+		}
+		return toRGBA(pal.ANSI[1]), true // red: failed
+	default:
+		return color.RGBA{}, false
 	}
 }
 
@@ -337,15 +373,15 @@ func (tb *TabBar) paintPlusButton(buf []byte, frameW int, pal theme.Palette, x0,
 		chip = h
 	}
 	cx, cy := x0+w/2, h/2
-	chipFactor := float32(glassPlusDefault)
 	fgDim := float32(0.30)
+	plusBG := pal.PlusButtonBG
 	if hovered {
-		chipFactor = glassPlusHover
 		fgDim = 0.12
+		plusBG = chrome.GlassFill(pal.Background, glassPlusHover)
 	}
 	if chip >= 2 {
 		left, top := cx-chip/2, cy-chip/2
-		fillRoundRect(buf, frameW, left, top, left+chip, top+chip, chip/2, toRGBA(chrome.GlassFill(pal.Background, chipFactor)))
+		fillRoundRect(buf, frameW, left, top, left+chip, top+chip, chip/2, toRGBA(plusBG))
 	}
 
 	fg := toRGBA(chrome.DimFG(pal.Foreground, pal.Background, fgDim))

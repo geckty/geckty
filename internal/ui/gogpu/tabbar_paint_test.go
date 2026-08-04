@@ -8,6 +8,7 @@ import (
 
 	"github.com/geckty/geckty/internal/session"
 	"github.com/geckty/geckty/internal/ui/chrome"
+	"github.com/geckty/geckty/internal/vt/emu"
 )
 
 // newTestTab spawns a real (short-lived, quiet) shell so tabTitle/paintTab
@@ -145,6 +146,33 @@ func TestPaintTabAndPlusButton(t *testing.T) {
 	tb.paintPlusButton(buf, 200, pal, 150, 36, 32, 3, false)
 }
 
+func TestPaintTabUsesExplicitActiveBackground(t *testing.T) {
+	tb := testTabBar()
+	pal := testPalette()
+	pal.ActiveTabBG = color.NRGBA{R: 0xaa, G: 0xbb, B: 0xcc, A: 0xff}
+	pal.TabBarBG = color.NRGBA{R: 0x11, G: 0x11, B: 0x11, A: 0xff}
+	tab := newTestTab(t, 1, t.TempDir())
+
+	buf := newBuf(200, 40)
+	// Fill bar first so we can distinguish pill pixels.
+	fillRect(buf, 200, 0, 0, 200, 40, toRGBA(pal.TabBarBG))
+	tb.paintTab(buf, 200, 40, pal, tab, 0, 100, 32, 3, true, false, false, false, false)
+
+	want := toRGBA(pal.ActiveTabBG)
+	found := false
+	for y := 4; y < 28 && !found; y++ {
+		for x := 10; x < 90; x++ {
+			if pixelAt(buf, 200, x, y) == want {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected active tab pill to use explicit ActiveTabBG %v", want)
+	}
+}
+
 func TestPaintStatus(t *testing.T) {
 	tb := testTabBar()
 	pal := testPalette()
@@ -222,4 +250,54 @@ func TestLayoutWithActiveDrag(t *testing.T) {
 	// Must not panic while a tab is mid-drag (exercises the two-pass
 	// paint order and the dragged-tab positioning branch).
 	tb.Layout(buf, 400, 40, 32, pal, tabs, 1, "", drag, true, true)
+}
+
+func TestCommandIndicatorColorNoneByDefault(t *testing.T) {
+	tab := newTestTab(t, 1, t.TempDir())
+	pal := testPalette()
+
+	if _, ok := commandIndicatorColor(tab.Session, pal); ok {
+		t.Fatal("a tab with no OSC 133 activity should have no indicator")
+	}
+}
+
+func TestCommandIndicatorColorWhileRunning(t *testing.T) {
+	tab := newTestTab(t, 1, t.TempDir())
+	pal := testPalette()
+	tab.Session.Term.Parse([]byte(emu.OSC133CommandExec))
+
+	got, ok := commandIndicatorColor(tab.Session, pal)
+	if !ok {
+		t.Fatal("a running command should show an indicator")
+	}
+	if want := toRGBA(pal.ANSI[6]); got != want {
+		t.Fatalf("running indicator color = %+v, want %+v (ANSI[6])", got, want)
+	}
+}
+
+func TestCommandIndicatorColorAfterSuccessAndFailure(t *testing.T) {
+	cases := []struct {
+		name    string
+		doneSeq string
+		wantIdx int
+	}{
+		{"success", emu.OSC133CommandDone, 2},
+		{"failure", emu.OSC133CommandDone1, 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tab := newTestTab(t, 1, t.TempDir())
+			pal := testPalette()
+			tab.Session.Term.Parse([]byte(emu.OSC133CommandExec))
+			tab.Session.Term.Parse([]byte(c.doneSeq))
+
+			got, ok := commandIndicatorColor(tab.Session, pal)
+			if !ok {
+				t.Fatal("a just-finished command should show an indicator")
+			}
+			if want := toRGBA(pal.ANSI[c.wantIdx]); got != want {
+				t.Fatalf("%s indicator color = %+v, want %+v (ANSI[%d])", c.name, got, want, c.wantIdx)
+			}
+		})
+	}
 }

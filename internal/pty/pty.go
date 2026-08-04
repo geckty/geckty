@@ -37,6 +37,13 @@ type Config struct {
 	Dir string
 
 	Cols, Rows uint16
+
+	// Integration injects OSC 133 shell-integration hooks into the
+	// resolved default shell (zsh/bash only) when Command is empty — see
+	// shell_integration_unix.go's package doc comment. Ignored (as if
+	// false) when Command is set: an explicit command is the caller's
+	// exact choice, never geckty's to modify. No effect on Windows.
+	Integration bool
 }
 
 // Open spawns Config.Command (or the platform default shell) attached to a

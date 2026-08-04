@@ -23,7 +23,12 @@ type conPTY struct {
 }
 
 // Open spawns Config.Command (or the platform default shell) attached to a
-// new Windows ConPTY (windows.CreatePseudoConsole).
+// new Windows ConPTY (windows.CreatePseudoConsole via kernel32).
+//
+// Deliberately does NOT depend on a side-by-side OpenConsole.exe /
+// conpty.dll bundle (what Windows Terminal ships). The public ConPTY API
+// is the supported contract; optionally loading a newer host remains a
+// future opt-in, not a hard dependency — see the project roadmap.
 //
 // This mirrors the sequence termizard's pty_windows.go uses, including two
 // gotchas that are easy to get wrong:

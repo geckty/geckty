@@ -16,10 +16,9 @@ const (
 	dragAutoScrollStepDp     = 8  // strip scroll distance per drag-move event once inside the edge zone
 )
 
-// handlePointerEvent is the gogpu equivalent of the old gio code's
-// pointer.Event case: route to the tab bar if the press/drag started
-// there or the pointer is currently in its Y range, otherwise to the
-// terminal grid.
+// handlePointerEvent routes pointer events to the tab bar or the grid:
+// the tab bar if the press/drag started there or the pointer is currently
+// in its Y range, otherwise the terminal grid.
 func (s *uiState) handlePointerEvent(ev gpucontext.PointerEvent) {
 	x, y := s.toDevicePx(ev.X, ev.Y)
 	tabBarPx := s.tabBarHeightPx()
@@ -41,7 +40,7 @@ func (s *uiState) handlePointerEvent(ev gpucontext.PointerEvent) {
 	if active == nil {
 		return
 	}
-	padPx := dpToPx(chromeContentPadDp, s.scale)
+	padPx := dpToPx(s.contentPadDp(), s.scale)
 	switch ev.Type {
 	case gpucontext.PointerDown:
 		s.handleButton(active, x, y, tabBarPx, padPx, ev.Buttons, true)
@@ -73,7 +72,7 @@ func (s *uiState) handleScrollEvent(ev gpucontext.ScrollEvent) {
 	if active == nil {
 		return
 	}
-	padPx := dpToPx(chromeContentPadDp, s.scale)
+	padPx := dpToPx(s.contentPadDp(), s.scale)
 	s.handleScroll(active, x, y, tabBarPx, padPx, ev.DeltaY)
 }
 
@@ -101,6 +100,9 @@ func cellFromPosition(x, y, cellWidth, cellHeight, chromeHeightPx, padX, padY, c
 func (s *uiState) handleScroll(sess *session.Session, x, y, chromeHeightPx, padPx int, deltaY float64) {
 	if s.cellW <= 0 || s.cellH <= 0 {
 		return
+	}
+	if s.cfg != nil && s.cfg.Scrollback.WheelMultiplier > 0 {
+		deltaY *= s.cfg.Scrollback.WheelMultiplier
 	}
 	lines := accumulateScrollLines(deltaY, s.cellH, &s.scrollAccumPx)
 	if lines == 0 {
@@ -164,6 +166,11 @@ func (s *uiState) handleButton(sess *session.Session, x, y, chromeHeightPx, padP
 		}
 	} else {
 		sess.EndSelection()
+		if s.cfg != nil && s.cfg.Clipboard.CopyOnSelect {
+			if text, ok := sess.SelectedText(); ok && text != "" {
+				_ = clipboardWrite(s.app, text)
+			}
+		}
 	}
 	// Selection state changes don't flow through session.Config.OnDirty
 	// (that only fires on new PTY output) and macOS doesn't run with

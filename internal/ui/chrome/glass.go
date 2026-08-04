@@ -4,13 +4,13 @@ import (
 	"image/color"
 )
 
-// Terminal.app Pro tab fills — flat opaque blends.
+// Flat opaque glass-pill tab fills.
 // Inactive pills stay barely above the bar; active / hover / drag lift more.
 const (
 	GlassBarLift  = 0.08        // tab strip slightly above terminal bg
 	GlassInactive = 0.07        // inactive: just-visible dark pill
 	GlassHover    = 0.14        // hovered inactive
-	GlassActive   = 0.34        // active capsule (Terminal mid-grey)
+	GlassActive   = 0.34        // active capsule (mid-grey)
 	GlassDrag     = 0.42        // dragged fill strength (alpha applied separately)
 	GlassDragA    = uint8(0x99) // ~60% — translucent frosted drag pin
 )

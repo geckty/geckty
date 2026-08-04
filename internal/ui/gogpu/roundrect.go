@@ -6,7 +6,7 @@ import (
 )
 
 // fillRoundRect fills a rounded rectangle with 1px analytic-AA corners —
-// the raw-buffer equivalent of gio's clip.UniformRRect fill, without any
+// a CPU-side rounded-rect fill into the RGBA frame buffer, without any
 // GPU clip primitive (bounds-checked pixel math instead).
 //
 // c.A is honored as real translucency (src-over blend against whatever is

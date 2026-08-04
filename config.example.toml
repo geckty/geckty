@@ -7,50 +7,103 @@
 [window]
 width = 1000
 height = 650
+# Content inset around the terminal grid, in logical dp (hot-reloaded).
+padding = 8
+# Reserved: ask before quitting with multiple tabs (UI wiring TBD).
+# confirm_close = false
 
 [font]
-family = "monospace"
+# family: empty (the default) uses geckty's bundled IBM Plex Mono — a
+# consistent, good-looking monospace font that ships in the binary, so it
+# looks the same on every platform regardless of what's installed. Set to
+# "monospace" to use the platform's own default monospace font instead
+# (Menlo on macOS, Consolas on Windows, DejaVu Sans Mono on Linux — best
+# effort, see internal/ui/gogpu/font.go), or to a specific font name to
+# look it up by filename in the usual system font directories.
+family = ""
 size = 13
+# bold/italic: whether SGR-bold/italic text renders in the family's actual
+# bold/italic weight (geckty's bundled font, and most system fonts, ship
+# real bold/italic files — not synthetically slanted/thickened glyphs).
+# Setting either to false keeps that attribute's text at regular weight.
+bold = true
+italic = true
+
+[ui_font]
+# The tab bar's own font — independent of [font] since chrome text (tab
+# titles, etc.) has no reason to be monospaced. Same family/size rules as
+# [font] above; empty uses geckty's bundled PT Sans.
+family = ""
+size = 12
+
+# theme loads themes/<name>.toml next to this file (or under the geckty
+# config dir), then merges any inline [colors] keys on top — Kitty/Rio
+# style. Built-in: "glass". Omit theme and set [colors] freely instead.
+# theme = "glass"
 
 [colors]
-# preset, if set, replaces foreground/background/ansi below entirely with
-# a named built-in scheme rather than merging with them — pick one or the
-# other, not both.
-#
-# Built-in presets:
-#   "glass" — geckty's standard / default theme. Approximates macOS
-#             Terminal.app's dark "Pro" palette, paired with the tab bar's
-#             own software glass capsules (see internal/ui/chrome/glass.go).
-#             Colors only: gogpu's window API has no transparency/blur knob,
-#             so this can't reproduce Terminal.app's translucent chrome via
-#             real compositor blur.
-preset = "glass"
-
-# Leave the fields below commented when using a preset. Uncomment (and
-# clear preset) to customize colors by hand — values match Terminal.app
-# "Pro" (text/selection verified from the system profile).
-# foreground = "#f4f4f4"
-# background = "#000000"
-# selection = "#525252"
-# ansi = [
-#   "#000000", "#c23621", "#25a250", "#caca33",
-#   "#492ee1", "#d338d3", "#33bbc8", "#cbcccc",
-#   "#818383", "#fc391f", "#31e722", "#eaec23",
-#   "#5833ff", "#f935f8", "#14f0f0", "#e9ebeb",
-# ]
+# Free-form palette (defaults match the built-in glass theme). Empty chrome
+# keys (active_tab_*, tab_bar_background, …) are derived from background
+# with the tab bar's glass blends — set them explicitly to override.
+foreground = "#f4f4f4"
+background = "#1d1f22"
+selection_background = "#525252"
+# selection_foreground = "#f4f4f4"
+# cursor = "#f4f4f4"
+ansi = [
+  "#000000", "#c23621", "#25a250", "#caca33",
+  "#492ee1", "#d338d3", "#33bbc8", "#cbcccc",
+  "#818383", "#fc391f", "#31e722", "#eaec23",
+  "#5833ff", "#f935f8", "#14f0f0", "#e9ebeb",
+]
+# active_tab_foreground = "#f4f4f4"
+# active_tab_background = "#55585c"
+# inactive_tab_foreground = "#a0a0a0"
+# inactive_tab_background = "#2a2c30"
+# tab_bar_background = "#222428"
+# hover_tab_background = "#3a3c40"
+# plus_button_background = "#2a2c30"
 
 [shell]
 # Leave unset to use $SHELL (POSIX) or the best available PowerShell/cmd
 # (Windows).
 # command = ["/bin/zsh", "-l"]
+# Extra KEY=value entries appended to the child environment.
+# env = ["EDITOR=nvim"]
+# Initial cwd for new tabs (empty = user home).
+# working_dir = ""
+# Inject OSC 133 prompts into default zsh/bash (ignored when command is set).
+integration = true
+
+[scrollback]
+# Cap physical history lines per tab (0 = unlimited). New tabs only.
+lines = 10000
+# Scale pointer-wheel scroll distance.
+wheel_multiplier = 1.0
+
+[cursor]
+# Shape: "block", "beam", or "underline".
+shape = "block"
+blink = true
+interval_ms = 530
+# Optional hex color; empty uses the theme foreground.
+# color = "#f4f4f4"
+
+[clipboard]
+# OSC 52 write/read policy. Read defaults to deny (exfiltration risk).
+osc52_write = "allow"
+osc52_read = "deny"
+# Max OSC 52 payload size in bytes.
+max_size = 5242880
+# Copy selection to the clipboard on mouse-up (when selection ends).
+copy_on_select = false
 
 [selection]
 # Extra characters (beyond letters, digits, and "_", always included)
 # treated as part of a word for double-click word selection. The default
 # selects only "_"-joined identifiers; uncommenting a broader set below
-# lets a double-click grab a whole kebab-case-name.ext or path in one go.
-# Double-click word characters beyond letters/digits/"_" (Terminal.app-
-# style filenames like config.example.toml).
+# lets a double-click grab a whole kebab-case-name.ext or path in one go,
+# like config.example.toml.
 word_chars = "._-"
 
 [tabbar]
@@ -59,8 +112,8 @@ word_chars = "._-"
 hidden = false
 # show_threshold is the minimum number of open tabs before the tab strip
 # (the row of tab pills) is shown. Default 2: a single tab has nothing to
-# switch between, so — matching Terminal.app/iTerm2 — the strip only
-# appears once a second tab exists. Set to 1 to always show it.
+# switch between, so the strip stays out of the way until a second one
+# exists. Set to 1 to always show it.
 show_threshold = 2
 
 [tabbar.plus_button]
@@ -80,6 +133,12 @@ show_threshold = 2
 # (case-insensitive). The -log-level flag overrides this when set.
 log_level = "error"
 
+# Watch this file and apply changes without restarting: colors, font,
+# keybindings, selection, tabbar, and log_level all take effect within
+# ~1s of saving. window (size), shell.command for already-open tabs, and
+# plugins are only read at startup regardless of this setting.
+hot_reload = true
+
 # Defining any [[keybindings]] entries replaces ALL of the built-in
 # defaults, not just the ones listed — copy the defaults below and edit
 # them rather than adding a single override.
@@ -91,7 +150,7 @@ log_level = "error"
 # Defaults avoid plain Ctrl+T/Ctrl+W/Ctrl+C/Ctrl+V: those are shell
 # readline/job-control bindings (transpose-char, delete-word-backward,
 # SIGINT, literal-next) that must reach the shell untouched. macOS default
-# (Cmd-based, matches Terminal.app/iTerm2):
+# (Cmd-based — Cmd isn't consumed by the shell there):
 #
 # [[keybindings]]
 # key = "T"

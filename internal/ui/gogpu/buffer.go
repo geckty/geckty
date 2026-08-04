@@ -6,9 +6,8 @@ import (
 )
 
 // fillRect fills [x0,y0)-[x1,y1) in buf (RGBA8, stride frameW*4) with c,
-// clamped to the buffer's bounds. This is a plain bounds-checked pixel
-// write — no GPU clip primitive involved, unlike the gio renderer this
-// package replaces.
+// clamped to the buffer's bounds. Plain bounds-checked pixel writes — no
+// GPU clip primitive.
 func fillRect(buf []byte, frameW, x0, y0, x1, y1 int, c color.RGBA) {
 	if frameW <= 0 || len(buf) == 0 {
 		return
@@ -66,9 +65,8 @@ func blendPixel(buf []byte, off int, r, g, b, alpha uint8) {
 
 // blitGlyphClipped composites a glyph mask onto buf, discarding ink outside
 // [cx0,cx1)x[cy0,cy1) (keeps side bearings from painting into a neighboring
-// cell or past the frame edge). This replaces gio's per-cell clip.Rect
-// push/pop — the same visual effect via bounds-checked pixel math instead
-// of a GPU clip stack, which is what avoids the D3D11 corruption bug.
+// cell or past the frame edge). Clipping is bounds-checked pixel math
+// rather than a GPU clip stack.
 func blitGlyphClipped(buf []byte, frameW, frameH int, dr image.Rectangle, mask *image.Alpha, maskp image.Point, fg color.RGBA, cx0, cy0, cx1, cy1 int) {
 	if frameW <= 0 || len(buf) == 0 {
 		return

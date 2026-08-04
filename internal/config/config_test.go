@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestDefaultPathUsesXDGConfigHome(t *testing.T) {
@@ -73,6 +74,51 @@ command = ["/bin/zsh", "-l"]
 	got := cfg.ShellCommand()
 	if len(got) != 2 || got[0] != "/bin/zsh" || got[1] != "-l" {
 		t.Fatalf("shell command = %v", got)
+	}
+}
+
+func TestDefaultFontBoldItalicAreOn(t *testing.T) {
+	d := Default()
+	if !d.Font.Bold || !d.Font.Italic {
+		t.Fatalf("Font.Bold/Italic should default to true, got %+v", d.Font)
+	}
+	if d.Font.Family != "" {
+		t.Fatalf("Font.Family should default to empty (embedded font), got %q", d.Font.Family)
+	}
+	if d.UIFont.Family != "" {
+		t.Fatalf("UIFont.Family should default to empty (embedded font), got %q", d.UIFont.Family)
+	}
+}
+
+func TestLoadOverridesFontAndUIFont(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	fixture := `
+[font]
+family = "My Mono"
+size = 16
+bold = false
+italic = false
+
+[ui_font]
+family = "My Sans"
+size = 14
+`
+	if err := os.WriteFile(path, []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Font.Family != "My Mono" || cfg.Font.Size != 16 {
+		t.Fatalf("Font not overridden: %+v", cfg.Font)
+	}
+	if cfg.Font.Bold || cfg.Font.Italic {
+		t.Fatalf("Font.Bold/Italic should have been overridden to false: %+v", cfg.Font)
+	}
+	if cfg.UIFont.Family != "My Sans" || cfg.UIFont.Size != 14 {
+		t.Fatalf("UIFont not overridden: %+v", cfg.UIFont)
 	}
 }
 
@@ -219,6 +265,66 @@ func TestParseLogLevel(t *testing.T) {
 		if got != want {
 			t.Fatalf("ParseLogLevel(%q) = %v, want %v", in, got, want)
 		}
+	}
+}
+
+func TestDefaultHotReloadIsTrue(t *testing.T) {
+	if !Default().HotReload {
+		t.Fatal("Default().HotReload should be true")
+	}
+}
+
+func TestWatchNoSourcePathIsNoop(t *testing.T) {
+	cfg := Default()
+	called := make(chan struct{}, 1)
+	stop := cfg.Watch(func(*Config, error) { called <- struct{}{} })
+	defer stop()
+
+	select {
+	case <-called:
+		t.Fatal("Watch should be a no-op for a Config without a source path (not obtained from Load)")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestWatchDetectsReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[font]\nsize = 10\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	changes := make(chan *Config, 1)
+	stop := cfg.Watch(func(c *Config, err error) {
+		if err != nil {
+			t.Errorf("Watch onChange: %v", err)
+			return
+		}
+		changes <- c
+	})
+	defer stop()
+
+	if err := os.WriteFile(path, []byte("[font]\nsize = 20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Force the mtime forward regardless of the filesystem's timestamp
+	// resolution or how fast the write above landed relative to Load's
+	// initial os.Stat.
+	future := time.Now().Add(time.Hour)
+	if err := os.Chtimes(path, future, future); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-changes:
+		if got.Font.Size != 20 {
+			t.Fatalf("reloaded Font.Size = %v, want 20", got.Font.Size)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Watch did not report the config change in time")
 	}
 }
 

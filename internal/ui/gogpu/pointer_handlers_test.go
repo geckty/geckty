@@ -147,6 +147,17 @@ func TestHandleButtonDoubleClickSelectsWord(t *testing.T) {
 	s.handleButton(active, 0, 0, 0, 0, gpucontext.ButtonsLeft, true) // second click -> RegisterClick true
 }
 
+func TestHandleButtonCopyOnSelect(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	s.cfg.Clipboard.CopyOnSelect = true
+	active := s.mgr.Active()
+	_, _ = active.Term.Write([]byte("hello"))
+	s.cellW, s.cellH = 7, 13
+	s.handleButton(active, 10, 20, 0, 0, gpucontext.ButtonsLeft, true)
+	s.handleButton(active, 20, 20, 0, 0, gpucontext.ButtonsLeft, false)
+	_ = app
+}
+
 func TestHandleDragZeroCellMetricsIsNoop(t *testing.T) {
 	s, _ := testUIStateWithTab(t)
 	s.cellW = 0

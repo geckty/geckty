@@ -7,18 +7,31 @@ import (
 	"image/color"
 
 	"github.com/geckty/geckty/internal/config"
+	"github.com/geckty/geckty/internal/ui/chrome"
 	"github.com/geckty/geckty/internal/vt/emu"
 )
 
-// Palette maps emu.Color values to paintable colors.
+// Palette maps emu.Color values and chrome slots to paintable colors.
 type Palette struct {
-	Foreground color.NRGBA
-	Background color.NRGBA
-	Selection  color.NRGBA
-	ANSI       [16]color.NRGBA
+	Foreground  color.NRGBA
+	Background  color.NRGBA
+	Selection   color.NRGBA // selection background (legacy name)
+	SelectionFG color.NRGBA
+	Cursor      color.NRGBA
+	ANSI        [16]color.NRGBA
+
+	TabBarBG      color.NRGBA
+	ActiveTabFG   color.NRGBA
+	ActiveTabBG   color.NRGBA
+	InactiveTabFG color.NRGBA
+	InactiveTabBG color.NRGBA
+	HoverTabBG    color.NRGBA
+	PlusButtonBG  color.NRGBA
 }
 
-// NewPalette parses cfg's hex color strings into a Palette.
+// NewPalette parses cfg's hex color strings into a Palette. Empty chrome
+// keys are derived with glass blends from Background/Foreground so a
+// palette-only config keeps the previous look.
 func NewPalette(cfg config.ColorsConfig) (Palette, error) {
 	var p Palette
 	var err error
@@ -28,21 +41,103 @@ func NewPalette(cfg config.ColorsConfig) (Palette, error) {
 	if p.Background, err = parseHex(cfg.Background); err != nil {
 		return Palette{}, fmt.Errorf("colors.background: %w", err)
 	}
-	if cfg.Selection != "" {
-		if p.Selection, err = parseHex(cfg.Selection); err != nil {
-			return Palette{}, fmt.Errorf("colors.selection: %w", err)
+
+	selBG := cfg.SelectionBackground
+	if selBG == "" {
+		selBG = cfg.Selection
+	}
+	if selBG != "" {
+		if p.Selection, err = parseHex(selBG); err != nil {
+			return Palette{}, fmt.Errorf("colors.selection_background: %w", err)
 		}
 	} else {
-		// Fallback: Terminal Pro-like mid-grey when the config predates
-		// the selection field.
 		p.Selection = color.NRGBA{R: 0x52, G: 0x52, B: 0x52, A: 0xff}
 	}
+
+	if cfg.SelectionForeground != "" {
+		if p.SelectionFG, err = parseHex(cfg.SelectionForeground); err != nil {
+			return Palette{}, fmt.Errorf("colors.selection_foreground: %w", err)
+		}
+	} else {
+		p.SelectionFG = p.Foreground
+	}
+
+	if cfg.Cursor != "" {
+		if p.Cursor, err = parseHex(cfg.Cursor); err != nil {
+			return Palette{}, fmt.Errorf("colors.cursor: %w", err)
+		}
+	} else {
+		p.Cursor = p.Foreground
+	}
+
 	for i, s := range cfg.ANSI {
 		if p.ANSI[i], err = parseHex(s); err != nil {
 			return Palette{}, fmt.Errorf("colors.ansi[%d]: %w", i, err)
 		}
 	}
+
+	if err := fillChrome(&p, cfg); err != nil {
+		return Palette{}, err
+	}
 	return p, nil
+}
+
+// ApplyCursorColor overrides the caret color when hex is non-empty
+// (used for [cursor].color taking precedence over colors.cursor).
+func ApplyCursorColor(p *Palette, hex string) error {
+	if hex == "" {
+		return nil
+	}
+	c, err := parseHex(hex)
+	if err != nil {
+		return fmt.Errorf("cursor.color: %w", err)
+	}
+	p.Cursor = c
+	return nil
+}
+
+func fillChrome(p *Palette, cfg config.ColorsConfig) error {
+	var err error
+	parseOr := func(hex string, key string, derived color.NRGBA) (color.NRGBA, error) {
+		if hex == "" {
+			return derived, nil
+		}
+		c, err := parseHex(hex)
+		if err != nil {
+			return color.NRGBA{}, fmt.Errorf("colors.%s: %w", key, err)
+		}
+		return c, nil
+	}
+
+	if p.TabBarBG, err = parseOr(cfg.TabBarBackground, "tab_bar_background",
+		chrome.GlassFill(p.Background, chrome.GlassBarLift)); err != nil {
+		return err
+	}
+	if p.ActiveTabBG, err = parseOr(cfg.ActiveTabBackground, "active_tab_background",
+		chrome.GlassFill(p.Background, chrome.GlassActive)); err != nil {
+		return err
+	}
+	if p.InactiveTabBG, err = parseOr(cfg.InactiveTabBackground, "inactive_tab_background",
+		chrome.GlassFill(p.Background, chrome.GlassInactive)); err != nil {
+		return err
+	}
+	if p.HoverTabBG, err = parseOr(cfg.HoverTabBackground, "hover_tab_background",
+		chrome.GlassFill(p.Background, chrome.GlassHover)); err != nil {
+		return err
+	}
+	if p.PlusButtonBG, err = parseOr(cfg.PlusButtonBackground, "plus_button_background",
+		chrome.GlassFill(p.Background, 0.10)); err != nil {
+		return err
+	}
+	if p.ActiveTabFG, err = parseOr(cfg.ActiveTabForeground, "active_tab_foreground",
+		p.Foreground); err != nil {
+		return err
+	}
+	if p.InactiveTabFG, err = parseOr(cfg.InactiveTabForeground, "inactive_tab_foreground",
+		chrome.DimFG(p.Foreground, p.Background, 0.32)); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Resolve converts an emu.Color (ANSI-16, xterm-256, or truecolor) to RGB.
@@ -63,6 +158,32 @@ func (p Palette) Resolve(c emu.Color) color.NRGBA {
 		return xterm256(uint16(idx))
 	}
 	return p.Foreground
+}
+
+// TabFill returns the pill fill for a tab's interaction state.
+func (p Palette) TabFill(active, hovering, dragging bool) color.NRGBA {
+	switch {
+	case dragging:
+		return chrome.GlassFill(p.Background, chrome.GlassDrag)
+	case active:
+		return p.ActiveTabBG
+	case hovering:
+		return p.HoverTabBG
+	default:
+		return p.InactiveTabBG
+	}
+}
+
+// TabTitleFG returns the title color for a tab's interaction state.
+func (p Palette) TabTitleFG(active, hovering, dragging bool) color.NRGBA {
+	switch {
+	case active || dragging:
+		return p.ActiveTabFG
+	case hovering:
+		return chrome.DimFG(p.Foreground, p.Background, 0.10)
+	default:
+		return p.InactiveTabFG
+	}
 }
 
 // xterm256 implements the standard xterm 256-color palette formula for

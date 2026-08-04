@@ -43,6 +43,7 @@ type gpuWindow interface {
 	SetOnDraw(fn func(*gogpulib.Context))
 	SetOnResize(fn func(int, int))
 	SetOnKeyPress(fn func(gpucontext.Key, gpucontext.Modifiers))
+	SetOnKeyRelease(fn func(gpucontext.Key, gpucontext.Modifiers))
 	SetOnTextInput(fn func(string))
 	SetOnPointer(fn func(gpucontext.PointerEvent))
 	SetOnScroll(fn func(gpucontext.ScrollEvent))

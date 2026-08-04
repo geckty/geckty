@@ -26,6 +26,9 @@ const (
 	attrBlank
 	attrTransparent
 	attrOpaque
+	attrDim
+	attrInvisible
+	attrOverline
 )
 
 // State represents the terminal emulation state. Use Lock/Unlock
@@ -748,12 +751,14 @@ func (t *State) setAttr(attr []int, subArgs [][]int) {
 		a := attr[i]
 		switch a {
 		case 0:
-			t.cur.Attr.Mode &^= attrReverse | attrStrikethrough | attrBold | attrItalic | attrBlink
+			t.cur.Attr.Mode &^= attrReverse | attrStrikethrough | attrBold | attrItalic | attrBlink | attrDim | attrInvisible | attrOverline
 			t.cur.Attr.FG = DefaultFG
 			t.cur.Attr.BG = DefaultBG
 			t.cur.Attr.Underline = UnderlineStyle{}
 		case 1:
 			t.cur.Attr.Mode |= attrBold
+		case 2:
+			t.cur.Attr.Mode |= attrDim
 		case 3:
 			t.cur.Attr.Mode |= attrItalic
 		case 4:
@@ -769,12 +774,14 @@ func (t *State) setAttr(attr []int, subArgs [][]int) {
 			t.cur.Attr.Mode |= attrBlink
 		case 7:
 			t.cur.Attr.Mode |= attrReverse
+		case 8:
+			t.cur.Attr.Mode |= attrInvisible
 		case 9:
 			t.cur.Attr.Mode |= attrStrikethrough
 		case 21:
 			t.cur.Attr.Underline.Mode = UnderlineDouble
 		case 22:
-			t.cur.Attr.Mode &^= attrBold
+			t.cur.Attr.Mode &^= attrBold | attrDim
 		case 23:
 			t.cur.Attr.Mode &^= attrItalic
 		case 24:
@@ -783,8 +790,14 @@ func (t *State) setAttr(attr []int, subArgs [][]int) {
 			t.cur.Attr.Mode &^= attrBlink
 		case 27:
 			t.cur.Attr.Mode &^= attrReverse
+		case 28:
+			t.cur.Attr.Mode &^= attrInvisible
 		case 29:
 			t.cur.Attr.Mode &^= attrStrikethrough
+		case 53:
+			t.cur.Attr.Mode |= attrOverline
+		case 55:
+			t.cur.Attr.Mode &^= attrOverline
 		case 38:
 			if i+2 < len(attr) && attr[i+1] == 5 {
 				i += 2

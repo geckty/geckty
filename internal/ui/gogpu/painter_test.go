@@ -27,7 +27,7 @@ func lineText(l emu.Line) string {
 // 2-row viewport, forcing lines to scroll into history.
 func buildScrolledTerm(t *testing.T, n int) *vt.Terminal {
 	t.Helper()
-	term := vt.New(10, 2, &bytes.Buffer{}, nil)
+	term := vt.New(10, 2, &bytes.Buffer{}, nil, 0)
 	for i := 0; i < n; i++ {
 		term.Parse([]byte("line" + string(rune('0'+i)) + "\r\n"))
 	}
@@ -142,8 +142,7 @@ func TestCellSpanNeverBelowOneCell(t *testing.T) {
 }
 
 // ── Pixel-buffer assertion tests (following termizard's painter_test.go
-// precedent — this is the coverage the old gio-ops-based painter could
-// never have, since op.Ops can't be asserted on directly) ──────────────
+// precedent — coverage for the software painter's fill helpers). ───────
 
 func newBuf(w, h int) []byte { return make([]byte, w*h*4) }
 

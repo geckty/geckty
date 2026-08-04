@@ -375,13 +375,13 @@ func (t *State) CsiDispatch(
 	return
 
 unknown: // TODO: get rid of this goto
-	fmt.Printf("[CsiDispatch] params=%v, intermediates=%v, ignore=%v, r=%v\n", params, intermediates, ignore, r)
+	t.logf("[CsiDispatch] params=%v, intermediates=%v, ignore=%v, r=%v\n", params, intermediates, ignore, r)
 }
 
 func (t *State) EscDispatch(intermediates []byte, ignore bool, b byte) {
 	switch b {
 	default:
-		fmt.Printf(
+		t.logf(
 			"[EscDispatch] %c intermediates=%v, ignore=%v, byte=%02x\n",
 			b,
 			intermediates,

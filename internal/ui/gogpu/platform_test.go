@@ -85,6 +85,7 @@ type fakeEventSource struct {
 	gpucontext.NullEventSource
 
 	keyPressFn    func(gpucontext.Key, gpucontext.Modifiers)
+	keyReleaseFn  func(gpucontext.Key, gpucontext.Modifiers)
 	textInputFn   func(string)
 	pointerFn     func(gpucontext.PointerEvent)
 	scrollEventFn func(gpucontext.ScrollEvent)
@@ -94,6 +95,10 @@ func newFakeEventSource() *fakeEventSource { return &fakeEventSource{} }
 
 func (f *fakeEventSource) OnKeyPress(fn func(gpucontext.Key, gpucontext.Modifiers)) {
 	f.keyPressFn = fn
+}
+
+func (f *fakeEventSource) OnKeyRelease(fn func(gpucontext.Key, gpucontext.Modifiers)) {
+	f.keyReleaseFn = fn
 }
 
 func (f *fakeEventSource) OnTextInput(fn func(string)) {
@@ -117,21 +122,25 @@ var (
 // fakeWindow is a gpuWindow test double recording which callback each
 // SetOnXxx call registered, so tests can invoke them directly.
 type fakeWindow struct {
-	onDraw      func(*gogpulib.Context)
-	onResize    func(int, int)
-	onKeyPress  func(gpucontext.Key, gpucontext.Modifiers)
-	onTextInput func(string)
-	onPointer   func(gpucontext.PointerEvent)
-	onScroll    func(gpucontext.ScrollEvent)
-	onClose     func() bool
+	onDraw       func(*gogpulib.Context)
+	onResize     func(int, int)
+	onKeyPress   func(gpucontext.Key, gpucontext.Modifiers)
+	onKeyRelease func(gpucontext.Key, gpucontext.Modifiers)
+	onTextInput  func(string)
+	onPointer    func(gpucontext.PointerEvent)
+	onScroll     func(gpucontext.ScrollEvent)
+	onClose      func() bool
 }
 
 func (f *fakeWindow) SetOnDraw(fn func(*gogpulib.Context))                        { f.onDraw = fn }
 func (f *fakeWindow) SetOnResize(fn func(int, int))                               { f.onResize = fn }
 func (f *fakeWindow) SetOnKeyPress(fn func(gpucontext.Key, gpucontext.Modifiers)) { f.onKeyPress = fn }
-func (f *fakeWindow) SetOnTextInput(fn func(string))                              { f.onTextInput = fn }
-func (f *fakeWindow) SetOnPointer(fn func(gpucontext.PointerEvent))               { f.onPointer = fn }
-func (f *fakeWindow) SetOnScroll(fn func(gpucontext.ScrollEvent))                 { f.onScroll = fn }
-func (f *fakeWindow) SetOnClose(fn func() bool)                                   { f.onClose = fn }
+func (f *fakeWindow) SetOnKeyRelease(fn func(gpucontext.Key, gpucontext.Modifiers)) {
+	f.onKeyRelease = fn
+}
+func (f *fakeWindow) SetOnTextInput(fn func(string))                { f.onTextInput = fn }
+func (f *fakeWindow) SetOnPointer(fn func(gpucontext.PointerEvent)) { f.onPointer = fn }
+func (f *fakeWindow) SetOnScroll(fn func(gpucontext.ScrollEvent))   { f.onScroll = fn }
+func (f *fakeWindow) SetOnClose(fn func() bool)                     { f.onClose = fn }
 
 var _ gpuWindow = (*fakeWindow)(nil)
