@@ -60,6 +60,27 @@ func TestApplyConfigKeepsPreviousPaletteOnInvalidColors(t *testing.T) {
 	}
 }
 
+func TestBuildPaletteAppliesCursorOverride(t *testing.T) {
+	cfg := config.Default()
+	cfg.Colors.Cursor = "#ff0000"
+	cfg.Cursor.Color = "#00ff00"
+	pal, err := buildPalette(cfg)
+	if err != nil {
+		t.Fatalf("buildPalette: %v", err)
+	}
+	if pal.Cursor.R != 0 || pal.Cursor.G != 0xff || pal.Cursor.B != 0 {
+		t.Fatalf("Cursor = %v, want [cursor].color #00ff00 over colors.cursor", pal.Cursor)
+	}
+}
+
+func TestBuildPaletteRejectsBadCursorOverride(t *testing.T) {
+	cfg := config.Default()
+	cfg.Cursor.Color = "not-hex"
+	if _, err := buildPalette(cfg); err == nil {
+		t.Fatal("expected error for invalid cursor.color")
+	}
+}
+
 func TestApplyPendingConfigIsNoopWhenNothingPending(t *testing.T) {
 	s, _ := testUIState(t)
 	before := s.cfg

@@ -231,3 +231,114 @@ func TestNewPaletteRejectsInvalidANSI(t *testing.T) {
 		t.Fatal("expected error for invalid ANSI color")
 	}
 }
+
+func TestNewPaletteRejectsInvalidSelectionForeground(t *testing.T) {
+	cfg := config.Default().Colors
+	cfg.SelectionForeground = "bad"
+	if _, err := NewPalette(cfg); err == nil {
+		t.Fatal("expected error for invalid selection_foreground")
+	}
+}
+
+func TestNewPaletteRejectsInvalidCursor(t *testing.T) {
+	cfg := config.Default().Colors
+	cfg.Cursor = "bad"
+	if _, err := NewPalette(cfg); err == nil {
+		t.Fatal("expected error for invalid cursor")
+	}
+}
+
+func TestNewPaletteRejectsInvalidChromeKeys(t *testing.T) {
+	keys := []struct {
+		name string
+		set  func(*config.ColorsConfig)
+	}{
+		{"tab_bar_background", func(c *config.ColorsConfig) { c.TabBarBackground = "bad" }},
+		{"active_tab_background", func(c *config.ColorsConfig) { c.ActiveTabBackground = "bad" }},
+		{"inactive_tab_background", func(c *config.ColorsConfig) { c.InactiveTabBackground = "bad" }},
+		{"hover_tab_background", func(c *config.ColorsConfig) { c.HoverTabBackground = "bad" }},
+		{"plus_button_background", func(c *config.ColorsConfig) { c.PlusButtonBackground = "bad" }},
+		{"active_tab_foreground", func(c *config.ColorsConfig) { c.ActiveTabForeground = "bad" }},
+		{"inactive_tab_foreground", func(c *config.ColorsConfig) { c.InactiveTabForeground = "bad" }},
+	}
+	for _, tc := range keys {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := config.Default().Colors
+			tc.set(&cfg)
+			if _, err := NewPalette(cfg); err == nil {
+				t.Fatalf("expected error for invalid colors.%s", tc.name)
+			}
+		})
+	}
+}
+
+func TestNewPaletteAllExplicitChrome(t *testing.T) {
+	cfg := config.Default().Colors
+	cfg.ActiveTabForeground = "#010101"
+	cfg.ActiveTabBackground = "#020202"
+	cfg.InactiveTabForeground = "#030303"
+	cfg.InactiveTabBackground = "#040404"
+	cfg.TabBarBackground = "#050505"
+	cfg.HoverTabBackground = "#060606"
+	cfg.PlusButtonBackground = "#070707"
+	p, err := NewPalette(cfg)
+	if err != nil {
+		t.Fatalf("NewPalette: %v", err)
+	}
+	if p.ActiveTabFG != (color.NRGBA{R: 0x01, G: 0x01, B: 0x01, A: 0xff}) {
+		t.Fatalf("ActiveTabFG = %v", p.ActiveTabFG)
+	}
+	if p.InactiveTabFG != (color.NRGBA{R: 0x03, G: 0x03, B: 0x03, A: 0xff}) {
+		t.Fatalf("InactiveTabFG = %v", p.InactiveTabFG)
+	}
+	if p.HoverTabBG != (color.NRGBA{R: 0x06, G: 0x06, B: 0x06, A: 0xff}) {
+		t.Fatalf("HoverTabBG = %v", p.HoverTabBG)
+	}
+	if p.PlusButtonBG != (color.NRGBA{R: 0x07, G: 0x07, B: 0x07, A: 0xff}) {
+		t.Fatalf("PlusButtonBG = %v", p.PlusButtonBG)
+	}
+}
+
+func TestTabFillAndTabTitleFGStates(t *testing.T) {
+	p := testPalette(t)
+	p.ActiveTabBG = color.NRGBA{R: 0xaa, A: 0xff}
+	p.HoverTabBG = color.NRGBA{R: 0xbb, A: 0xff}
+	p.InactiveTabBG = color.NRGBA{R: 0xcc, A: 0xff}
+	p.ActiveTabFG = color.NRGBA{G: 0xaa, A: 0xff}
+	p.InactiveTabFG = color.NRGBA{G: 0xcc, A: 0xff}
+
+	if got := p.TabFill(false, false, true); got.R == 0 && got.G == 0 && got.B == 0 {
+		// dragging uses GlassFill of background — must be non-zero alpha
+		t.Fatalf("TabFill(dragging) = %v, want glass drag fill", got)
+	}
+	if got := p.TabFill(true, false, false); got != p.ActiveTabBG {
+		t.Fatalf("TabFill(active) = %v", got)
+	}
+	if got := p.TabFill(false, true, false); got != p.HoverTabBG {
+		t.Fatalf("TabFill(hover) = %v", got)
+	}
+	if got := p.TabFill(false, false, false); got != p.InactiveTabBG {
+		t.Fatalf("TabFill(inactive) = %v", got)
+	}
+
+	if got := p.TabTitleFG(true, false, false); got != p.ActiveTabFG {
+		t.Fatalf("TabTitleFG(active) = %v", got)
+	}
+	if got := p.TabTitleFG(false, false, true); got != p.ActiveTabFG {
+		t.Fatalf("TabTitleFG(dragging) = %v", got)
+	}
+	if got := p.TabTitleFG(false, true, false); got == p.InactiveTabFG || got == p.ActiveTabFG {
+		// hover dims toward bg — distinct from inactive/active slots
+		t.Fatalf("TabTitleFG(hover) = %v, want dimmed fg", got)
+	}
+	if got := p.TabTitleFG(false, false, false); got != p.InactiveTabFG {
+		t.Fatalf("TabTitleFG(inactive) = %v", got)
+	}
+}
+
+func TestXterm256OutOfRange(t *testing.T) {
+	got := xterm256(0) // below cube — default branch
+	if got.A != 0xff || got.R != 0 || got.G != 0 || got.B != 0 {
+		t.Fatalf("xterm256(0) = %v, want opaque black", got)
+	}
+}
