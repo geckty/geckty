@@ -2,6 +2,7 @@ package session
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -76,4 +77,70 @@ func trimURLTrailer(u string) string {
 		return "https://" + u
 	}
 	return u
+}
+
+// URLHit is one URL found in History()+Screen() (OSC 8 or plain-text).
+type URLHit struct {
+	URL            string
+	AbsLine, Col   int
+}
+
+// CollectURLs scans History()+Screen() for OSC 8 hyperlinks and plain
+// urlPattern matches, deduped by URL+AbsLine. Caps at max (default 64 when
+// max <= 0).
+func (s *Session) CollectURLs(max int) []URLHit {
+	if max <= 0 {
+		max = 64
+	}
+	s.Term.RLock()
+	defer s.Term.RUnlock()
+
+	history := s.Term.History()
+	screen := s.Term.Screen()
+	cols := s.Term.Size().C
+	total := len(history) + len(screen)
+	if total == 0 || cols <= 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	out := make([]URLHit, 0, 8)
+	add := func(url string, abs, col int) {
+		if url == "" || len(out) >= max {
+			return
+		}
+		key := url + "\x00" + strconv.Itoa(abs)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, URLHit{URL: url, AbsLine: abs, Col: col})
+	}
+
+	for abs := 0; abs < total && len(out) < max; abs++ {
+		var line emu.Line
+		switch {
+		case abs < len(history):
+			line = history[abs]
+		default:
+			line = screen[abs-len(history)]
+		}
+		var prevLink string
+		for col := 0; col < len(line) && col < cols; col++ {
+			h := line[col].Hyperlink
+			if h != "" && h != prevLink {
+				add(h, abs, col)
+			}
+			prevLink = h
+		}
+		runes, lineOK := lineRunesAt(history, screen, abs, cols)
+		if !lineOK {
+			continue
+		}
+		text := strings.TrimRightFunc(string(runes), unicode.IsSpace)
+		for _, m := range urlPattern.FindAllStringIndex(text, -1) {
+			add(trimURLTrailer(text[m[0]:m[1]]), abs, m[0])
+		}
+	}
+	return out
 }

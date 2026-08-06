@@ -162,6 +162,27 @@ func (t *Terminal) TakeBell() bool {
 	return true
 }
 
+// TakePaintDirty returns dirty screen-row indices (and whether a full-screen
+// change occurred) since the previous take, then clears those paint flags.
+// Callers use this for best-effort partial redraws; ScreenChanged or an
+// empty Lines map means a full paint is required.
+func (t *Terminal) TakePaintDirty() (lines map[int]bool, screenChanged bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	src, ok := t.Terminal.(semanticPromptSource)
+	if !ok {
+		return nil, true
+	}
+	d := src.Changes()
+	screenChanged = d.ScreenChanged()
+	if len(d.Lines) > 0 {
+		lines = d.Lines
+		d.Lines = make(map[int]bool)
+	}
+	d.Flag &^= emu.ChangedScreen
+	return lines, screenChanged
+}
+
 // CommandState returns the terminal's current OSC 133 command-run state
 // (see CommandState's doc comment). Callers needing a consistent snapshot
 // alongside other Term state should call this within an RLock/RUnlock

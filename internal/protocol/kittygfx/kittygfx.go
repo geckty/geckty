@@ -6,11 +6,11 @@
 //
 // Scope, deliberately narrow for the MVP:
 //
-//   - Only action a=T (transmit-and-display in one step) is supported.
-//     a=p (place a previously-transmitted image), a=d (delete), a=q
-//     (query), and animation frames (a=f/a=a) are all declined with an
-//     error response rather than silently ignored, so a well-behaved
-//     client doesn't hang waiting for a reply that will never come.
+//   - Actions a=T (transmit-and-display), a=d (delete), and a=q (query)
+//     are supported. a=p (place a previously-transmitted image) and
+//     animation frames (a=f/a=a) are declined with an error response rather
+//     than silently ignored, so a well-behaved client doesn't hang waiting
+//     for a reply that will never come.
 //   - Only transmission medium t=d (direct, escape-code-embedded base64)
 //     is supported. File-based mediums (t=f local file, t=t temp file,
 //     t=s shared memory) are refused: the spec's own security section
@@ -25,11 +25,10 @@
 //   - Chunked transmission (m=1 / m=0) is reassembled.
 //
 // Not implemented: multiple placements per image / placement reuse by id
-// (needs a=p), deletion (a=d), the query action, animation, non-zero
-// pixel offsets within a cell (x/y), and z-index compositing (images
-// always draw in front of text, negative z "behind text" is not
-// distinguished). All are clean extensions on top of this package's
-// Decoder if a future milestone needs them.
+// (needs a=p), animation, non-zero pixel offsets within a cell (x/y), and
+// z-index compositing (images always draw in front of text, negative z
+// "behind text" is not distinguished). All are clean extensions on top of
+// this package's Decoder if a future milestone needs them.
 package kittygfx
 
 import (
@@ -80,6 +79,16 @@ type Placement struct {
 	Cols, Rows int
 }
 
+// FeedResult is the outcome of one Decoder.Feed call.
+type FeedResult struct {
+	Resp      []byte
+	Placement *Placement
+	// DeleteID is the image id to delete when non-zero (a=d,d=i).
+	DeleteID uint32
+	// DeleteAll is set for a=d with d=a (or default) / no targeted id.
+	DeleteAll bool
+}
+
 // controlData is the parsed form of an APC payload's key=value control
 // data (the part before the first ';').
 type controlData struct {
@@ -94,6 +103,7 @@ type controlData struct {
 	quiet       int  // 'q': 0, 1, or 2
 	cols        int  // 'c'
 	rows        int  // 'r'
+	deleteSel   byte // 'd' delete selector (a=d only); 0 = unset
 }
 
 func parseControlData(s string) controlData {
@@ -135,6 +145,10 @@ func parseControlData(s string) controlData {
 			cd.cols, _ = strconv.Atoi(v)
 		case "r":
 			cd.rows, _ = strconv.Atoi(v)
+		case "d":
+			if v != "" {
+				cd.deleteSel = v[0]
+			}
 		}
 	}
 	return cd
@@ -158,19 +172,14 @@ func NewDecoder() *Decoder {
 // Feed processes one complete APC payload (as internal/protocol.Sniffer
 // delivers it: everything between "ESC _" and "ESC \", including the
 // leading marker byte). Payloads not starting with 'G' aren't a Kitty
-// graphics command at all and are silently ignored (ok=false is not
-// returned — kittygfx doesn't know what else might use APC, so declining
-// silently rather than erroring is the only sound behavior).
+// graphics command at all and are silently ignored.
 //
-// resp, if non-nil, is the terminal's reply and must be written back to
-// the shell (mirroring how emu's own DA/DSR replies work). placement, if
-// non-nil, is a newly completed image ready to display. Either, both, or
-// neither may be returned from a single call — a mid-transmission chunk
-// returns neither; a chunk that completes a rejected command returns only
-// resp; a chunk that completes a valid one returns both.
-func (d *Decoder) Feed(payload []byte) (resp []byte, placement *Placement) {
+// Resp, if non-nil, is the terminal's reply and must be written back to
+// the shell. Placement, if non-nil, is a newly completed image. DeleteAll /
+// DeleteID signal placement removal for a=d.
+func (d *Decoder) Feed(payload []byte) FeedResult {
 	if len(payload) == 0 || payload[0] != 'G' {
-		return nil, nil
+		return FeedResult{}
 	}
 	ctrlStr, b64 := splitControlAndPayload(payload[1:])
 	chunk := parseControlData(ctrlStr)
@@ -199,61 +208,88 @@ func (d *Decoder) Feed(payload []byte) (resp []byte, placement *Placement) {
 		}
 	}
 
-	if cd.action != 'T' {
-		resp = d.errorResponse(cd, "only action=T (transmit+display) is supported")
+	if cd.action == 'q' {
+		// Query: we don't retain a separate image store in the decoder,
+		// so answer OK (clients tolerate ENOENT for missing; OK is fine).
+		resp := d.okResponse(cd)
 		d.reset()
-		return resp, nil
+		return FeedResult{Resp: resp}
+	}
+	if cd.action == 'd' {
+		result := FeedResult{Resp: d.okResponse(cd)}
+		sel := cd.deleteSel
+		if sel == 0 {
+			sel = 'a'
+		}
+		switch sel {
+		case 'i', 'I':
+			if cd.id != 0 {
+				result.DeleteID = cd.id
+			} else {
+				result.DeleteAll = true
+			}
+		default:
+			result.DeleteAll = true
+		}
+		d.reset()
+		return result
+	}
+
+	if cd.action != 'T' {
+		resp := d.errorResponse(cd, "only action=T (transmit+display) is supported")
+		d.reset()
+		return FeedResult{Resp: resp}
 	}
 	medium := cd.medium
 	if medium == 0 {
 		medium = 'd'
 	}
 	if medium != 'd' {
-		resp = d.errorResponse(cd, "only direct (t=d) transmission is supported")
+		resp := d.errorResponse(cd, "only direct (t=d) transmission is supported")
 		d.reset()
-		return resp, nil
+		return FeedResult{Resp: resp}
 	}
 	format := cd.format
 	if format == 0 {
 		format = int(FormatRGBA)
 	}
 	if format != int(FormatRGB) && format != int(FormatRGBA) && format != int(FormatPNG) {
-		resp = d.errorResponse(cd, fmt.Sprintf("unsupported format f=%d", format))
+		resp := d.errorResponse(cd, fmt.Sprintf("unsupported format f=%d", format))
 		d.reset()
-		return resp, nil
+		return FeedResult{Resp: resp}
 	}
 
 	d.data = append(d.data, b64...)
 	if len(d.data) > maxPayloadBytes {
-		resp = d.errorResponse(cd, "payload too large")
+		resp := d.errorResponse(cd, "payload too large")
 		d.reset()
-		return resp, nil
+		return FeedResult{Resp: resp}
 	}
 
 	if cd.more {
-		return nil, nil
+		return FeedResult{}
 	}
 
 	raw := make([]byte, base64.StdEncoding.DecodedLen(len(d.data)))
 	n, err := base64.StdEncoding.Decode(raw, d.data)
 	if err != nil {
-		resp = d.errorResponse(cd, "invalid base64 payload")
+		resp := d.errorResponse(cd, "invalid base64 payload")
 		d.reset()
-		return resp, nil
+		return FeedResult{Resp: resp}
 	}
 	raw = raw[:n]
 
 	img, err := decodeImage(format, cd.width, cd.height, raw)
 	if err != nil {
-		resp = d.errorResponse(cd, err.Error())
+		resp := d.errorResponse(cd, err.Error())
 		d.reset()
-		return resp, nil
+		return FeedResult{Resp: resp}
 	}
 
 	p := &Placement{ID: cd.id, Image: img, Cols: cd.cols, Rows: cd.rows}
-	resp = d.okResponse(cd)
+	resp := d.okResponse(cd)
 	d.reset()
-	return resp, p
+	return FeedResult{Resp: resp, Placement: p}
 }
 
 func (d *Decoder) reset() {

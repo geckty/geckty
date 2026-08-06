@@ -4,18 +4,29 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/glaciforge/slogsafe"
 
 	"github.com/geckty/geckty/internal/config"
 	"github.com/geckty/geckty/internal/logx"
+	"github.com/geckty/geckty/internal/rc"
 	"github.com/geckty/geckty/internal/ui"
 	"github.com/geckty/geckty/internal/ui/gogpu"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "@" {
+		if err := runRemote(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	logLevelFlag := flag.String("log-level", "", "log level: debug, info, warn, or error (overrides config's log_level)")
 	flag.Parse()
 
@@ -99,4 +110,37 @@ func main() {
 		slog.ErrorContext(ctx, "geckty exited", slogsafe.Err(runErr))
 		os.Exit(1)
 	}
+}
+
+// runRemote handles `geckty @ <cmd> [args…]` against GECKTY_SOCKET.
+func runRemote(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: geckty @ <new_tab|close_tab|send-text|get_text|list_tabs> [args]")
+	}
+	path := rc.SocketPath()
+	if path == "" {
+		return fmt.Errorf("GECKTY_SOCKET (or GECKTY_LISTEN) is not set")
+	}
+	cmd := strings.ToLower(args[0])
+	var line string
+	switch cmd {
+	case "new_tab", "close_tab", "get_text", "list_tabs":
+		line = cmd
+	case "send-text", "send_text":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: geckty @ send-text <text>")
+		}
+		line = "send_text " + strings.Join(args[1:], " ")
+	default:
+		return fmt.Errorf("unknown remote command %q", args[0])
+	}
+	resp, err := rc.DialAndSend(path, line)
+	if err != nil {
+		return err
+	}
+	fmt.Println(resp)
+	if strings.HasPrefix(resp, "ERR ") {
+		os.Exit(1)
+	}
+	return nil
 }

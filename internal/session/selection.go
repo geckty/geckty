@@ -54,6 +54,7 @@ type selectionState struct {
 	// but is a deliberate selection, not a plain click's accidental
 	// leftover.
 	complete bool
+	rect     bool // Alt-drag rectangular column span
 	anchor   cellPos // where the drag/click started
 	head     cellPos // current/last drag position
 }
@@ -90,11 +91,17 @@ func (s *Session) RegisterClick(col, absLine int) int {
 // StartSelection begins a new selection at (col, absLine), replacing any
 // existing one. Call on a mouse-button press that isn't being reported to
 // the shell (see internal/protocol/mouse.TrackingEnabled). absLine is an
-// index into History()+Screen() (see ViewToAbsLine).
+// index into History()+Screen() (see ViewToAbsLine). When rect is true the
+// selection is a column rectangle (Alt-drag) rather than a stream range.
 func (s *Session) StartSelection(col, absLine int) {
+	s.StartSelectionMode(col, absLine, false)
+}
+
+// StartSelectionMode is StartSelection with an explicit rectangular mode.
+func (s *Session) StartSelectionMode(col, absLine int, rect bool) {
 	s.selMu.Lock()
 	defer s.selMu.Unlock()
-	s.sel = selectionState{dragging: true, has: true, anchor: cellPos{col, absLine}, head: cellPos{col, absLine}}
+	s.sel = selectionState{dragging: true, has: true, rect: rect, anchor: cellPos{col, absLine}, head: cellPos{col, absLine}}
 }
 
 // ExtendSelection updates the selection's current endpoint. Call on a
@@ -207,6 +214,8 @@ func (s *Session) ClearSelection() {
 // Selection returns the current selection's normalized bounds (start
 // always at-or-before end in reading order). ok is false if there is no
 // selection. AbsLine is an index into History()+Screen().
+// For rectangular selections, Start.Col/End.Col are the left/right column
+// span (not stream endpoints); use SelectionRect to detect that mode.
 func (s *Session) Selection() (start, end CellPos, ok bool) {
 	s.selMu.Lock()
 	defer s.selMu.Unlock()
@@ -214,18 +223,58 @@ func (s *Session) Selection() (start, end CellPos, ok bool) {
 		return CellPos{}, CellPos{}, false
 	}
 	a, h := s.sel.anchor, s.sel.head
+	if s.sel.rect {
+		c0, c1 := a.Col, h.Col
+		if c1 < c0 {
+			c0, c1 = c1, c0
+		}
+		l0, l1 := a.AbsLine, h.AbsLine
+		if l1 < l0 {
+			l0, l1 = l1, l0
+		}
+		return CellPos{Col: c0, AbsLine: l0}, CellPos{Col: c1, AbsLine: l1}, true
+	}
 	if h.less(a) {
 		a, h = h, a
 	}
 	return CellPos(a), CellPos(h), true
 }
 
+// SelectionRect reports whether the current selection is rectangular.
+func (s *Session) SelectionRect() bool {
+	s.selMu.Lock()
+	defer s.selMu.Unlock()
+	return s.sel.has && s.sel.rect
+}
+
 // SelectedText extracts the text within the current selection from
 // History()+Screen(). ok is false if there is no selection.
 func (s *Session) SelectedText() (text string, ok bool) {
-	start, end, has := s.Selection()
-	if !has {
+	s.selMu.Lock()
+	if !s.sel.has {
+		s.selMu.Unlock()
 		return "", false
+	}
+	rect := s.sel.rect
+	a, h := s.sel.anchor, s.sel.head
+	s.selMu.Unlock()
+
+	var start, end CellPos
+	if rect {
+		c0, c1 := a.Col, h.Col
+		if c1 < c0 {
+			c0, c1 = c1, c0
+		}
+		l0, l1 := a.AbsLine, h.AbsLine
+		if l1 < l0 {
+			l0, l1 = l1, l0
+		}
+		start, end = CellPos{Col: c0, AbsLine: l0}, CellPos{Col: c1, AbsLine: l1}
+	} else {
+		if h.less(a) {
+			a, h = h, a
+		}
+		start, end = CellPos(a), CellPos(h)
 	}
 
 	s.Term.RLock()
@@ -237,11 +286,15 @@ func (s *Session) SelectedText() (text string, ok bool) {
 	var b strings.Builder
 	for abs := start.AbsLine; abs <= end.AbsLine; abs++ {
 		colStart, colEnd := 0, cols-1
-		if abs == start.AbsLine {
-			colStart = start.Col
-		}
-		if abs == end.AbsLine {
-			colEnd = end.Col
+		if rect {
+			colStart, colEnd = start.Col, end.Col
+		} else {
+			if abs == start.AbsLine {
+				colStart = start.Col
+			}
+			if abs == end.AbsLine {
+				colEnd = end.Col
+			}
 		}
 		runes, lineOK := lineRunesAt(history, screen, abs, cols)
 		if !lineOK {

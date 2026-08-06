@@ -7,6 +7,7 @@ import (
 	"github.com/gogpu/gpucontext"
 
 	"github.com/geckty/geckty/internal/protocol/mouse"
+	"github.com/geckty/geckty/internal/protocol/paste"
 	"github.com/geckty/geckty/internal/session"
 	"github.com/geckty/geckty/internal/ui/chrome"
 )
@@ -49,9 +50,16 @@ func (s *uiState) handlePointerEvent(ev gpucontext.PointerEvent) {
 	switch ev.Type {
 	case gpucontext.PointerDown:
 		if pane, ok := s.paneAt(x, y); ok && pane.Session != nil {
+			if s.tryScrollBarClick(pane, x, y) {
+				return
+			}
 			if pane.Session != active {
 				s.mgr.SetFocus(pane.Session)
 				active = pane.Session
+			}
+			if ev.Button == gpucontext.ButtonMiddle || ev.Buttons.HasMiddle() {
+				s.pasteClipboardInto(active)
+				return
 			}
 			s.handleButton(active, x, y, pane.X, pane.Y, ev.Buttons, true, ev.Modifiers)
 		}
@@ -60,6 +68,7 @@ func (s *uiState) handlePointerEvent(ev gpucontext.PointerEvent) {
 			s.handleButton(active, x, y, pane.X, pane.Y, ev.Buttons, false, ev.Modifiers)
 		}
 	case gpucontext.PointerMove:
+		s.updatePointerCursor(x, y)
 		if ev.Buttons.HasLeft() {
 			if pane, ok := s.paneForSession(active); ok {
 				s.handleDrag(active, x, y, pane.X, pane.Y)
@@ -213,7 +222,7 @@ func (s *uiState) handleButton(sess *session.Session, x, y, originX, originY int
 		case 3:
 			sess.SelectLine(absLine)
 		default:
-			sess.StartSelection(col, absLine)
+			sess.StartSelectionMode(col, absLine, mods.HasAlt())
 		}
 	} else {
 		sess.EndSelection()
@@ -294,6 +303,78 @@ func (s *uiState) maybeSelectionEdgeScroll(sess *session.Session, y, originY, ro
 	s.selEdgeLast = now
 	s.scrollBarUntil = now.Add(1200 * time.Millisecond)
 	return true
+}
+
+// tryScrollBarClick seeks scrollback when the pointer hits the overlay track.
+func (s *uiState) tryScrollBarClick(pane session.PaneRect, x, y int) bool {
+	if pane.Session == nil || s.frameW <= 0 {
+		return false
+	}
+	trackW, margin := 7, 2
+	x0 := s.frameW - trackW - margin
+	if x < x0 {
+		return false
+	}
+	pane.Session.Term.RLock()
+	hist := len(pane.Session.Term.History())
+	pane.Session.Term.RUnlock()
+	if hist <= 0 {
+		return false
+	}
+	y0 := pane.Y + margin
+	y1 := pane.Y + pane.H - margin
+	if y1 <= y0 {
+		return false
+	}
+	frac := float64(y-y0) / float64(y1-y0)
+	if frac < 0 {
+		frac = 0
+	}
+	if frac > 1 {
+		frac = 1
+	}
+	// Thumb top = scrolled fully into history; bottom = live (offset 0).
+	want := int(float64(hist) * (1 - frac))
+	cur := pane.Session.ScrollOffset()
+	pane.Session.ScrollBy(want - cur)
+	s.scrollBarUntil = time.Now().Add(1200 * time.Millisecond)
+	s.app.RequestRedraw()
+	return true
+}
+
+func (s *uiState) pasteClipboardInto(active *session.Session) {
+	if active == nil {
+		return
+	}
+	text, err := clipboardRead(s.app)
+	if err != nil || text == "" {
+		return
+	}
+	active.Term.RLock()
+	mode := active.Term.Mode()
+	active.Term.RUnlock()
+	_, _ = active.Write(paste.Encode(mode, text))
+	active.ClearSelection()
+	s.app.RequestRedraw()
+}
+
+func (s *uiState) updatePointerCursor(x, y int) {
+	setter, ok := s.app.(interface{ SetCursor(gpucontext.CursorShape) })
+	if !ok {
+		return
+	}
+	pane, hit := s.paneAt(x, y)
+	if !hit || pane.Session == nil || s.cellW <= 0 || s.cellH <= 0 {
+		setter.SetCursor(gpucontext.CursorDefault)
+		return
+	}
+	col, row := cellFromPosition(x, y, s.cellW, s.cellH, pane.X, pane.Y, 0, 0)
+	abs := pane.Session.ViewToAbsLine(row)
+	if _, ok := pane.Session.URLAt(abs, col); ok {
+		setter.SetCursor(gpucontext.CursorPointer)
+		return
+	}
+	setter.SetCursor(gpucontext.CursorText)
 }
 
 // handleTabBarPointer handles a pointer event for the tab strip — select,

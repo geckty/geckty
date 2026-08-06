@@ -15,8 +15,11 @@ import (
 // coordinates (row 0 = top visible row). Bounds are inclusive and assumed
 // already normalized (Start at-or-before End in reading order). Callers
 // convert absolute History()+Screen() selection bounds via gridSelection.
+// When Rect is set, every row uses the same [minCol, maxCol] column span
+// (Alt-drag rectangular selection) instead of stream wrapping.
 type Selection struct {
 	Active     bool
+	Rect       bool
 	Start, End struct{ Col, Row int }
 }
 
@@ -115,7 +118,11 @@ func (p *Painter) glyphEntryFor(bold, italic bool, r rune) (glyphEntry, bool) {
 // originY+rows*CellHeight) in buf, draws each cell, the cursor (when
 // blinkOn), and any Kitty-graphics placements. buf is RGBA8, stride =
 // frameW*4. Returns true if any pixel was written.
-func (p *Painter) Paint(buf []byte, frameW, frameH, originX, originY int, term *vt.Terminal, scrollOffset int, sel Selection, placements []Placement, blinkOn bool) bool {
+//
+// When dirtyRows is non-nil, only those view rows are cleared and repainted
+// (caller must not have wiped the whole grid); the cursor is always
+// refreshed. Pass nil for a full grid paint.
+func (p *Painter) Paint(buf []byte, frameW, frameH, originX, originY int, term *vt.Terminal, scrollOffset int, sel Selection, placements []Placement, blinkOn bool, dirtyRows map[int]bool) bool {
 	term.RLock()
 	defer term.RUnlock()
 
@@ -127,25 +134,54 @@ func (p *Painter) Paint(buf []byte, frameW, frameH, originX, originY int, term *
 	sz := term.Size()
 	gridW := sz.C * p.CellWidth
 	gridH := sz.R * p.CellHeight
-	fillRect(buf, frameW, originX, originY, originX+gridW, originY+gridH, toRGBA(p.Palette.Background))
+	bg := toRGBA(p.Palette.Background)
 
-	// Selection is in live viewport cell rows (gridSelection already
-	// clipped absolute History()+Screen() bounds to the visible window),
-	// so it paints whether or not we're scrolled into history.
-	if sel.Active {
-		p.paintSelection(buf, frameW, sel, sz.C, originX, originY)
-	}
+	if dirtyRows == nil {
+		fillRect(buf, frameW, originX, originY, originX+gridW, originY+gridH, bg)
 
-	lines, top := viewport(term, sz.R, scrollOffset)
-	for row, line := range lines {
-		y := originY + row*p.CellHeight
-		if y >= originY+gridH || y >= frameH {
-			break
+		// Selection is in live viewport cell rows (gridSelection already
+		// clipped absolute History()+Screen() bounds to the visible window),
+		// so it paints whether or not we're scrolled into history.
+		if sel.Active {
+			p.paintSelection(buf, frameW, sel, sz.C, originX, originY)
 		}
-		p.paintRow(buf, frameW, frameH, line, sz.C, originX, y, sel, row)
-	}
 
-	p.paintPlacements(buf, frameW, frameH, placements, top, sz.R, originX, originY, gridW)
+		lines, top := viewport(term, sz.R, scrollOffset)
+		for row, line := range lines {
+			y := originY + row*p.CellHeight
+			if y >= originY+gridH || y >= frameH {
+				break
+			}
+			p.paintRow(buf, frameW, frameH, line, sz.C, originX, y, sel, row)
+		}
+
+		p.paintPlacements(buf, frameW, frameH, placements, top, sz.R, originX, originY, gridW)
+	} else {
+		lines, top := viewport(term, sz.R, scrollOffset)
+		for row := range dirtyRows {
+			if row < 0 || row >= len(lines) || row >= sz.R {
+				continue
+			}
+			y := originY + row*p.CellHeight
+			if y >= originY+gridH || y >= frameH {
+				continue
+			}
+			fillRect(buf, frameW, originX, y, originX+gridW, y+p.CellHeight, bg)
+			if sel.Active {
+				// Re-paint selection highlight for this row only.
+				colStart, colEnd, ok := selectionColRange(sel, row, sz.C)
+				if ok {
+					highlight := p.Palette.Selection
+					if highlight.A == 0 {
+						highlight = color.NRGBA{R: 0x52, G: 0x52, B: 0x52, A: 0xff}
+					}
+					fillRect(buf, frameW, originX+colStart*p.CellWidth, y, originX+colEnd*p.CellWidth, y+p.CellHeight, toRGBA(highlight))
+				}
+			}
+			p.paintRow(buf, frameW, frameH, lines[row], sz.C, originX, y, sel, row)
+		}
+		_ = top // placements skipped on partial paint (best-effort)
+	}
 
 	if scrollOffset == 0 && blinkOn {
 		p.paintCursor(buf, frameW, term, originX, originY)
@@ -172,6 +208,22 @@ func (p *Painter) paintSelection(buf []byte, frameW int, sel Selection, cols, or
 func selectionColRange(sel Selection, row, cols int) (colStart, colEnd int, ok bool) {
 	if row < sel.Start.Row || row > sel.End.Row {
 		return 0, 0, false
+	}
+	if sel.Rect {
+		c0, c1 := sel.Start.Col, sel.End.Col
+		if c1 < c0 {
+			c0, c1 = c1, c0
+		}
+		if c0 < 0 {
+			c0 = 0
+		}
+		if c1 >= cols {
+			c1 = cols - 1
+		}
+		if c1 < c0 {
+			return 0, 0, false
+		}
+		return c0, c1 + 1, true
 	}
 	colStart, colEnd = 0, cols
 	if row == sel.Start.Row {

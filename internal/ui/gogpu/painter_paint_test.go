@@ -51,7 +51,7 @@ func TestPainterPaintRendersText(t *testing.T) {
 	_, _ = term.Write([]byte("Hi"))
 
 	buf := newBuf(100, 60)
-	ok := p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, nil, true)
+	ok := p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, nil, true, nil)
 	if !ok {
 		t.Fatal("Paint should return true when it has valid cell metrics")
 	}
@@ -82,7 +82,7 @@ func TestPainterPaintZeroCellMetricsIsNoop(t *testing.T) {
 	p := &Painter{Palette: testPalette()}
 	term := vt.New(10, 3, io.Discard, nil, 0)
 	buf := newBuf(50, 50)
-	if p.Paint(buf, 50, 50, 0, 0, term, 0, Selection{}, nil, true) {
+	if p.Paint(buf, 50, 50, 0, 0, term, 0, Selection{}, nil, true, nil) {
 		t.Fatal("Paint with CellWidth/CellHeight<=0 should return false")
 	}
 }
@@ -96,7 +96,7 @@ func TestPainterPaintSelectionHighlight(t *testing.T) {
 	sel := Selection{Active: true}
 	sel.Start.Col, sel.Start.Row = 2, 0
 	sel.End.Col, sel.End.Row = 4, 0
-	p.Paint(buf, 100, 60, 0, 0, term, 0, sel, nil, false)
+	p.Paint(buf, 100, 60, 0, 0, term, 0, sel, nil, false, nil)
 
 	// A pixel within the selected column range (col 3, safely inside the
 	// selection, away from any glyph ink) should show the selection color
@@ -116,7 +116,7 @@ func TestPainterPaintCursorStyles(t *testing.T) {
 
 	blockTerm := vt.New(10, 3, io.Discard, nil, 0)
 	buf := newBuf(100, 60)
-	p.Paint(buf, 100, 60, 0, 0, blockTerm, 0, Selection{}, nil, true)
+	p.Paint(buf, 100, 60, 0, 0, blockTerm, 0, Selection{}, nil, true, nil)
 	if got := pixelAt(buf, 100, 3, 6); got != fg {
 		t.Fatalf("block cursor center pixel = %v, want FG %v", got, fg)
 	}
@@ -124,7 +124,7 @@ func TestPainterPaintCursorStyles(t *testing.T) {
 	underlineTerm := vt.New(10, 3, io.Discard, nil, 0)
 	_, _ = underlineTerm.Write([]byte("\x1b[4 q")) // DECSCUSR: steady underline
 	buf2 := newBuf(100, 60)
-	p.Paint(buf2, 100, 60, 0, 0, underlineTerm, 0, Selection{}, nil, true)
+	p.Paint(buf2, 100, 60, 0, 0, underlineTerm, 0, Selection{}, nil, true, nil)
 	if got := pixelAt(buf2, 100, 3, 0); got == fg {
 		t.Fatal("underline cursor should not paint the top of the cell")
 	}
@@ -135,7 +135,7 @@ func TestPainterPaintCursorStyles(t *testing.T) {
 	barTerm := vt.New(10, 3, io.Discard, nil, 0)
 	_, _ = barTerm.Write([]byte("\x1b[6 q")) // DECSCUSR: steady bar
 	buf3 := newBuf(100, 60)
-	p.Paint(buf3, 100, 60, 0, 0, barTerm, 0, Selection{}, nil, true)
+	p.Paint(buf3, 100, 60, 0, 0, barTerm, 0, Selection{}, nil, true, nil)
 	if got := pixelAt(buf3, 100, 0, 6); got != fg {
 		t.Fatalf("bar cursor should paint the left edge of the cell, got %v", got)
 	}
@@ -153,7 +153,7 @@ func TestPainterPaintScrollOffsetSkipsCursorButPaintsSelection(t *testing.T) {
 	sel.Start.Col, sel.Start.Row = 2, 0
 	sel.End.Col, sel.End.Row = 4, 0
 	// scrollOffset != 0 must skip the cursor but still paint selection.
-	if !p.Paint(buf, 100, 60, 0, 0, term, 1, sel, nil, true) {
+	if !p.Paint(buf, 100, 60, 0, 0, term, 1, sel, nil, true, nil) {
 		t.Fatal("Paint should still return true with a nonzero scrollOffset")
 	}
 	x := 3*p.CellWidth + 1
@@ -181,7 +181,7 @@ func TestPainterPaintPlacementsSkipsOutOfViewport(t *testing.T) {
 	}
 	// Must not panic on the nil-image / out-of-range entries, and should
 	// paint the valid one.
-	p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, placements, false)
+	p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, placements, false, nil)
 	if got := pixelAt(buf, 100, 1, 1); got.R != 0xff {
 		t.Fatalf("placement pixel = %v, want opaque white from the placed image", got)
 	}
@@ -268,7 +268,7 @@ func TestPainterPaintDimInvisibleStrikethrough(t *testing.T) {
 	_, _ = term.Write([]byte("\x1b[2;9mA\x1b[0;8mB"))
 
 	buf := newBuf(100, 60)
-	if !p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, nil, false) {
+	if !p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, nil, false, nil) {
 		t.Fatal("Paint should succeed")
 	}
 

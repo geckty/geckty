@@ -28,6 +28,9 @@ size = 13
 # Setting either to false keeps that attribute's text at regular weight.
 bold = true
 italic = true
+# ligatures: reserved for HarfBuzz-shaped liga/calt (not wired yet).
+# ligatures = false
+# ligatures = false  # reserved; requires HarfBuzz (not yet wired)
 
 [ui_font]
 # The tab bar's own font — independent of [font] since chrome text (tab
@@ -149,6 +152,7 @@ hot_reload = true
 #         "next_pane", "prev_pane", "split_vertical", "split_horizontal",
 #         "scroll_to_prev_prompt", "scroll_to_next_prompt",
 #         "select_last_command_output", "copy", "paste", "search_scrollback",
+#         "open_url_hints", "show_scrollback",
 #         "increase_font_size", "decrease_font_size", "reset_font_size"
 #
 # Defaults avoid plain Ctrl+T/Ctrl+W/Ctrl+C/Ctrl+V: those are shell
@@ -195,6 +199,16 @@ hot_reload = true
 # key = "F"
 # mods = ["cmd", "shift"]
 # action = "search_scrollback"
+#
+# [[keybindings]]
+# key = "E"
+# mods = ["cmd", "shift"]
+# action = "open_url_hints"
+#
+# [[keybindings]]
+# key = "H"
+# mods = ["ctrl", "shift"]
+# action = "show_scrollback"
 #
 # [[keybindings]]
 # key = "="

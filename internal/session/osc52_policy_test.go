@@ -36,6 +36,19 @@ func TestOSC52BridgeReadDenied(t *testing.T) {
 	}
 	b = newOSC52Bridge(ClipboardPolicy{ReadAllow: true}, nil)
 	if _, ok := b.OSC52Read("c"); ok {
-		t.Fatal("ReadAllow still returns no host clipboard data")
+		t.Fatal("ReadAllow still returns no host clipboard data without hostRead")
+	}
+}
+
+func TestOSC52ReadAllowWithHost(t *testing.T) {
+	b := newOSC52Bridge(ClipboardPolicy{ReadAllow: true}, nil)
+	b.hostRead = func() ([]byte, bool) { return []byte("clip"), true }
+	data, ok := b.OSC52Read("c")
+	if !ok || string(data) != "clip" {
+		t.Fatalf("OSC52Read = %q, %v; want clip, true", data, ok)
+	}
+	b.policy.ReadAllow = false
+	if _, ok := b.OSC52Read("c"); ok {
+		t.Fatal("denied read must ignore hostRead")
 	}
 }

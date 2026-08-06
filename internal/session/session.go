@@ -5,6 +5,7 @@ package session
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/geckty/geckty/internal/pty"
@@ -207,6 +208,33 @@ func (s *Session) ScrollOffset() int {
 	s.scrollMu.Lock()
 	defer s.scrollMu.Unlock()
 	return s.scrollLines
+}
+
+// ScrollbackText returns History()+Screen() as newline-separated text
+// (trailing spaces trimmed per line), for pager / remote-control export.
+func (s *Session) ScrollbackText() string {
+	s.Term.RLock()
+	defer s.Term.RUnlock()
+
+	history := s.Term.History()
+	screen := s.Term.Screen()
+	cols := s.Term.Size().C
+	total := len(history) + len(screen)
+	if total == 0 || cols <= 0 {
+		return ""
+	}
+	var b strings.Builder
+	for abs := 0; abs < total; abs++ {
+		runes, ok := lineRunesAt(history, screen, abs, cols)
+		if !ok {
+			continue
+		}
+		b.WriteString(strings.TrimRight(string(runes), " "))
+		if abs != total-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
 }
 
 // ResetScroll returns to the live/bottom view.

@@ -46,7 +46,8 @@ func pngBytes(t *testing.T, w, h int, c color.NRGBA) []byte {
 
 func TestFeedIgnoresNonGraphicsAPC(t *testing.T) {
 	d := NewDecoder()
-	resp, placement := d.Feed([]byte("Xsomething-else"))
+	r := d.Feed([]byte("Xsomething-else"))
+	resp, placement := r.Resp, r.Placement
 	if resp != nil || placement != nil {
 		t.Fatalf("expected both nil for a non-'G' payload, got resp=%q placement=%v", resp, placement)
 	}
@@ -56,7 +57,8 @@ func TestFeedRGBASingleShot(t *testing.T) {
 	d := NewDecoder()
 	payload := "Ga=T,f=32,s=2,v=1,i=7;" + b64(rgbaBytes(2, 1, color.NRGBA{R: 10, G: 20, B: 30, A: 255}))
 
-	resp, placement := d.Feed([]byte(payload))
+	fr := d.Feed([]byte(payload))
+	resp, placement := fr.Resp, fr.Placement
 	if placement == nil {
 		t.Fatal("expected a completed placement")
 	}
@@ -67,9 +69,9 @@ func TestFeedRGBASingleShot(t *testing.T) {
 	if bounds.Dx() != 2 || bounds.Dy() != 1 {
 		t.Fatalf("image size = %v, want 2x1", bounds)
 	}
-	r, g, b, a := placement.Image.At(0, 0).RGBA()
-	if r>>8 != 10 || g>>8 != 20 || b>>8 != 30 || a>>8 != 255 {
-		t.Fatalf("pixel = %d,%d,%d,%d, want 10,20,30,255", r>>8, g>>8, b>>8, a>>8)
+	pr, pg, pb, pa := placement.Image.At(0, 0).RGBA()
+	if pr>>8 != 10 || pg>>8 != 20 || pb>>8 != 30 || pa>>8 != 255 {
+		t.Fatalf("pixel = %d,%d,%d,%d, want 10,20,30,255", pr>>8, pg>>8, pb>>8, pa>>8)
 	}
 
 	if want := "\x1b_Gi=7;OK\x1b\\"; string(resp) != want {
@@ -81,13 +83,14 @@ func TestFeedRGBSingleShotDefaultsAlphaOpaque(t *testing.T) {
 	d := NewDecoder()
 	payload := "Ga=T,f=24,s=1,v=1;" + b64(rgbBytes(1, 1, color.NRGBA{R: 200, G: 100, B: 50}))
 
-	_, placement := d.Feed([]byte(payload))
+	fr := d.Feed([]byte(payload))
+	placement := fr.Placement
 	if placement == nil {
 		t.Fatal("expected a completed placement")
 	}
-	r, g, b, a := placement.Image.At(0, 0).RGBA()
-	if r>>8 != 200 || g>>8 != 100 || b>>8 != 50 || a>>8 != 255 {
-		t.Fatalf("pixel = %d,%d,%d,%d, want 200,100,50,255", r>>8, g>>8, b>>8, a>>8)
+	pr, pg, pb, pa := placement.Image.At(0, 0).RGBA()
+	if pr>>8 != 200 || pg>>8 != 100 || pb>>8 != 50 || pa>>8 != 255 {
+		t.Fatalf("pixel = %d,%d,%d,%d, want 200,100,50,255", pr>>8, pg>>8, pb>>8, pa>>8)
 	}
 }
 
@@ -96,7 +99,8 @@ func TestFeedFormatDefaultsToRGBA(t *testing.T) {
 	// No f= key at all — must default to 32 (RGBA), not error.
 	payload := "Ga=T,s=1,v=1;" + b64(rgbaBytes(1, 1, color.NRGBA{R: 1, G: 2, B: 3, A: 4}))
 
-	_, placement := d.Feed([]byte(payload))
+	r := d.Feed([]byte(payload))
+	placement := r.Placement
 	if placement == nil {
 		t.Fatal("expected a completed placement with the default RGBA format")
 	}
@@ -107,7 +111,8 @@ func TestFeedPNG(t *testing.T) {
 	raw := pngBytes(t, 3, 2, color.NRGBA{R: 9, G: 8, B: 7, A: 255})
 	payload := "Ga=T,f=100,i=42;" + b64(raw)
 
-	resp, placement := d.Feed([]byte(payload))
+	r := d.Feed([]byte(payload))
+	resp, placement := r.Resp, r.Placement
 	if placement == nil {
 		t.Fatal("expected a completed placement")
 	}
@@ -134,13 +139,14 @@ func TestFeedChunkedTransmission(t *testing.T) {
 	c1, rest := encoded[:third], encoded[third:]
 	c2, c3 := rest[:third], rest[third:]
 
-	if resp, p := d.Feed([]byte("Ga=T,f=32,s=2,v=2,i=1,m=1;" + c1)); resp != nil || p != nil {
-		t.Fatalf("first chunk: expected no response/placement yet, got resp=%q placement=%v", resp, p)
+	if fr := d.Feed([]byte("Ga=T,f=32,s=2,v=2,i=1,m=1;" + c1)); fr.Resp != nil || fr.Placement != nil {
+		t.Fatalf("first chunk: expected no response/placement yet, got resp=%q placement=%v", fr.Resp, fr.Placement)
 	}
-	if resp, p := d.Feed([]byte("Gm=1;" + c2)); resp != nil || p != nil {
-		t.Fatalf("middle chunk: expected no response/placement yet, got resp=%q placement=%v", resp, p)
+	if fr := d.Feed([]byte("Gm=1;" + c2)); fr.Resp != nil || fr.Placement != nil {
+		t.Fatalf("middle chunk: expected no response/placement yet, got resp=%q placement=%v", fr.Resp, fr.Placement)
 	}
-	resp, p := d.Feed([]byte("Gm=0;" + c3))
+	fr := d.Feed([]byte("Gm=0;" + c3))
+	resp, p := fr.Resp, fr.Placement
 	if p == nil {
 		t.Fatal("final chunk: expected a completed placement")
 	}
@@ -151,23 +157,24 @@ func TestFeedChunkedTransmission(t *testing.T) {
 	if bounds.Dx() != 2 || bounds.Dy() != 2 {
 		t.Fatalf("image size = %v, want 2x2", bounds)
 	}
-	r, g, b, a := p.Image.At(1, 1).RGBA()
-	if r>>8 != 5 || g>>8 != 6 || b>>8 != 7 || a>>8 != 255 {
-		t.Fatalf("pixel = %d,%d,%d,%d, want 5,6,7,255", r>>8, g>>8, b>>8, a>>8)
+	pr, pg, pb, pa := p.Image.At(1, 1).RGBA()
+	if pr>>8 != 5 || pg>>8 != 6 || pb>>8 != 7 || pa>>8 != 255 {
+		t.Fatalf("pixel = %d,%d,%d,%d, want 5,6,7,255", pr>>8, pg>>8, pb>>8, pa>>8)
 	}
 }
 
 func TestFeedAbandonedTransmissionRecovers(t *testing.T) {
 	d := NewDecoder()
 	// Start a chunked transfer but never send m=0.
-	if _, p := d.Feed([]byte("Ga=T,f=32,s=1,v=1,m=1;" + b64(rgbaBytes(1, 1, color.NRGBA{A: 255})))); p != nil {
+	if fr := d.Feed([]byte("Ga=T,f=32,s=1,v=1,m=1;" + b64(rgbaBytes(1, 1, color.NRGBA{A: 255})))); fr.Placement != nil {
 		t.Fatal("unexpected placement from an in-progress chunk")
 	}
 	// A brand new command's own control data arrives instead of a
 	// continuation chunk — the old transfer must be discarded, not
 	// misread.
 	payload := "Ga=T,f=24,s=1,v=1;" + b64(rgbBytes(1, 1, color.NRGBA{R: 255, G: 255, B: 255}))
-	_, placement := d.Feed([]byte(payload))
+	r := d.Feed([]byte(payload))
+	placement := r.Placement
 	if placement == nil {
 		t.Fatal("expected the new command to complete on its own")
 	}
@@ -179,7 +186,8 @@ func TestFeedAbandonedTransmissionRecovers(t *testing.T) {
 
 func TestFeedUnsupportedActionReturnsError(t *testing.T) {
 	d := NewDecoder()
-	resp, placement := d.Feed([]byte("Ga=p,i=3;"))
+	r := d.Feed([]byte("Ga=p,i=3;"))
+	resp, placement := r.Resp, r.Placement
 	if placement != nil {
 		t.Fatal("expected no placement for an unsupported action")
 	}
@@ -193,7 +201,8 @@ func TestFeedUnsupportedActionReturnsError(t *testing.T) {
 
 func TestFeedUnsupportedMediumReturnsError(t *testing.T) {
 	d := NewDecoder()
-	resp, placement := d.Feed([]byte("Ga=T,t=f,s=1,v=1;" + b64([]byte("/etc/passwd"))))
+	r := d.Feed([]byte("Ga=T,t=f,s=1,v=1;" + b64([]byte("/etc/passwd"))))
+	resp, placement := r.Resp, r.Placement
 	if placement != nil {
 		t.Fatal("expected no placement for a file-based transmission medium")
 	}
@@ -204,7 +213,8 @@ func TestFeedUnsupportedMediumReturnsError(t *testing.T) {
 
 func TestFeedUnsupportedFormatReturnsError(t *testing.T) {
 	d := NewDecoder()
-	resp, placement := d.Feed([]byte("Ga=T,f=7,s=1,v=1;AAAA"))
+	r := d.Feed([]byte("Ga=T,f=7,s=1,v=1;AAAA"))
+	resp, placement := r.Resp, r.Placement
 	if placement != nil {
 		t.Fatal("expected no placement for an unsupported format")
 	}
@@ -216,7 +226,8 @@ func TestFeedUnsupportedFormatReturnsError(t *testing.T) {
 func TestFeedSizeMismatchReturnsError(t *testing.T) {
 	d := NewDecoder()
 	// Claims 2x2 RGBA (16 bytes) but only supplies 4.
-	resp, placement := d.Feed([]byte("Ga=T,f=32,s=2,v=2;" + b64([]byte{1, 2, 3, 4})))
+	r := d.Feed([]byte("Ga=T,f=32,s=2,v=2;" + b64([]byte{1, 2, 3, 4})))
+	resp, placement := r.Resp, r.Placement
 	if placement != nil {
 		t.Fatal("expected no placement for a size-mismatched payload")
 	}
@@ -227,7 +238,8 @@ func TestFeedSizeMismatchReturnsError(t *testing.T) {
 
 func TestFeedInvalidBase64ReturnsError(t *testing.T) {
 	d := NewDecoder()
-	resp, placement := d.Feed([]byte("Ga=T,f=32,s=1,v=1;not-valid-base64!!"))
+	r := d.Feed([]byte("Ga=T,f=32,s=1,v=1;not-valid-base64!!"))
+	resp, placement := r.Resp, r.Placement
 	if placement != nil {
 		t.Fatal("expected no placement for invalid base64")
 	}
@@ -239,7 +251,8 @@ func TestFeedInvalidBase64ReturnsError(t *testing.T) {
 func TestFeedQuiet1SuppressesOKOnly(t *testing.T) {
 	d := NewDecoder()
 	payload := "Ga=T,f=32,s=1,v=1,q=1;" + b64(rgbaBytes(1, 1, color.NRGBA{A: 255}))
-	resp, placement := d.Feed([]byte(payload))
+	r := d.Feed([]byte(payload))
+	resp, placement := r.Resp, r.Placement
 	if placement == nil {
 		t.Fatal("expected a completed placement")
 	}
@@ -248,7 +261,7 @@ func TestFeedQuiet1SuppressesOKOnly(t *testing.T) {
 	}
 
 	d2 := NewDecoder()
-	resp2, _ := d2.Feed([]byte("Ga=p,q=1;"))
+	resp2 := d2.Feed([]byte("Ga=p,q=1;")).Resp
 	if resp2 == nil {
 		t.Fatal("q=1 must NOT suppress error responses")
 	}
@@ -256,7 +269,8 @@ func TestFeedQuiet1SuppressesOKOnly(t *testing.T) {
 
 func TestFeedQuiet2SuppressesErrorsToo(t *testing.T) {
 	d := NewDecoder()
-	resp, placement := d.Feed([]byte("Ga=p,q=2;"))
+	r := d.Feed([]byte("Ga=p,q=2;"))
+	resp, placement := r.Resp, r.Placement
 	if placement != nil {
 		t.Fatal("expected no placement")
 	}
@@ -267,7 +281,8 @@ func TestFeedQuiet2SuppressesErrorsToo(t *testing.T) {
 
 func TestFeedResponseOmitsIDWhenNotGiven(t *testing.T) {
 	d := NewDecoder()
-	resp, placement := d.Feed([]byte("Ga=T,f=32,s=1,v=1;" + b64(rgbaBytes(1, 1, color.NRGBA{A: 255}))))
+	r := d.Feed([]byte("Ga=T,f=32,s=1,v=1;" + b64(rgbaBytes(1, 1, color.NRGBA{A: 255}))))
+	resp, placement := r.Resp, r.Placement
 	if placement == nil {
 		t.Fatal("expected a completed placement")
 	}
@@ -279,7 +294,8 @@ func TestFeedResponseOmitsIDWhenNotGiven(t *testing.T) {
 func TestFeedResponseIncludesPlacementID(t *testing.T) {
 	d := NewDecoder()
 	payload := "Ga=T,f=32,s=1,v=1,i=5,p=9;" + b64(rgbaBytes(1, 1, color.NRGBA{A: 255}))
-	resp, placement := d.Feed([]byte(payload))
+	r := d.Feed([]byte(payload))
+	resp, placement := r.Resp, r.Placement
 	if placement == nil {
 		t.Fatal("expected a completed placement")
 	}
@@ -291,7 +307,8 @@ func TestFeedResponseIncludesPlacementID(t *testing.T) {
 func TestFeedCarriesRequestedCellSpan(t *testing.T) {
 	d := NewDecoder()
 	payload := "Ga=T,f=32,s=1,v=1,c=10,r=4;" + b64(rgbaBytes(1, 1, color.NRGBA{A: 255}))
-	_, placement := d.Feed([]byte(payload))
+	r := d.Feed([]byte(payload))
+	placement := r.Placement
 	if placement == nil {
 		t.Fatal("expected a completed placement")
 	}
@@ -302,11 +319,45 @@ func TestFeedCarriesRequestedCellSpan(t *testing.T) {
 
 func TestFeedOversizedRawDimensionsRejected(t *testing.T) {
 	d := NewDecoder()
-	resp, placement := d.Feed([]byte("Ga=T,f=32,s=100000,v=100000;AAAA"))
+	r := d.Feed([]byte("Ga=T,f=32,s=100000,v=100000;AAAA"))
+	resp, placement := r.Resp, r.Placement
 	if placement != nil {
 		t.Fatal("expected no placement for an absurdly large claimed image")
 	}
 	if !bytes.Contains(resp, []byte("EINVAL")) {
 		t.Fatalf("resp = %q, want an EINVAL error", resp)
+	}
+}
+
+func TestFeedQueryReturnsOK(t *testing.T) {
+	d := NewDecoder()
+	fr := d.Feed([]byte("Ga=q,i=42;"))
+	if fr.Placement != nil || fr.DeleteAll || fr.DeleteID != 0 {
+		t.Fatalf("query must not place/delete, got %+v", fr)
+	}
+	if want := "\x1b_Gi=42;OK\x1b\\"; string(fr.Resp) != want {
+		t.Fatalf("resp = %q, want %q", fr.Resp, want)
+	}
+}
+
+func TestFeedDeleteAll(t *testing.T) {
+	d := NewDecoder()
+	fr := d.Feed([]byte("Ga=d;"))
+	if !fr.DeleteAll || fr.DeleteID != 0 || fr.Placement != nil {
+		t.Fatalf("got %+v, want DeleteAll", fr)
+	}
+	if want := "\x1b_G;OK\x1b\\"; string(fr.Resp) != want {
+		t.Fatalf("resp = %q, want %q", fr.Resp, want)
+	}
+}
+
+func TestFeedDeleteByID(t *testing.T) {
+	d := NewDecoder()
+	fr := d.Feed([]byte("Ga=d,d=i,i=10;"))
+	if fr.DeleteAll || fr.DeleteID != 10 || fr.Placement != nil {
+		t.Fatalf("got %+v, want DeleteID=10", fr)
+	}
+	if want := "\x1b_Gi=10;OK\x1b\\"; string(fr.Resp) != want {
+		t.Fatalf("resp = %q, want %q", fr.Resp, want)
 	}
 }

@@ -21,6 +21,8 @@ const (
 	ActionCopy             Action = "copy"
 	ActionPaste            Action = "paste"
 	ActionSearchScrollback Action = "search_scrollback"
+	ActionOpenURLHints     Action = "open_url_hints"
+	ActionShowScrollback   Action = "show_scrollback"
 	ActionIncreaseFontSize Action = "increase_font_size"
 	ActionDecreaseFontSize Action = "decrease_font_size"
 	ActionResetFontSize    Action = "reset_font_size"
@@ -42,6 +44,8 @@ var validActions = map[string]Action{
 	string(ActionCopy):             ActionCopy,
 	string(ActionPaste):            ActionPaste,
 	string(ActionSearchScrollback): ActionSearchScrollback,
+	string(ActionOpenURLHints):     ActionOpenURLHints,
+	string(ActionShowScrollback):   ActionShowScrollback,
 	string(ActionIncreaseFontSize): ActionIncreaseFontSize,
 	string(ActionDecreaseFontSize): ActionDecreaseFontSize,
 	string(ActionResetFontSize):    ActionResetFontSize,

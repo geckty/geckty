@@ -31,6 +31,7 @@ import (
 	"github.com/geckty/geckty/internal/plugin"
 	"github.com/geckty/geckty/internal/protocol/focus"
 	"github.com/geckty/geckty/internal/protocol/paste"
+	"github.com/geckty/geckty/internal/rc"
 	"github.com/geckty/geckty/internal/session"
 	"github.com/geckty/geckty/internal/ui/chrome"
 	"github.com/geckty/geckty/internal/ui/theme"
@@ -92,6 +93,9 @@ type uiState struct {
 	scrollBarUntil time.Time
 	selEdgeLast    time.Time // last edge auto-scroll tick while dragging a selection
 	search         searchState
+	hintsActive    bool
+	hints          []session.URLHit
+	hintsLabels    []string
 	confirmClose   bool // pending multi-tab quit confirmation overlay
 	visualBellUntil time.Time
 	lastMods       gpucontext.Modifiers // latest known mods for Shift+wheel override
@@ -181,7 +185,25 @@ func Run(cfg *config.Config) error {
 	s.wireLifecycleCallbacks(gapp)
 	s.wireEventSource(gapp)
 
+	stopRC := s.wireRemoteControl()
+	defer stopRC()
+
 	return gapp.Run()
+}
+
+// wireRemoteControl starts the optional GECKTY_SOCKET / GECKTY_LISTEN
+// listener. Returns a no-op stop when unset.
+func (s *uiState) wireRemoteControl() (stop func()) {
+	path := rc.SocketPath()
+	if path == "" {
+		return func() {}
+	}
+	stop, err := rc.ListenAndServe(path, rcHost{s: s})
+	if err != nil {
+		slog.Warn("remote control listen", slog.String("path", path), slog.Any("error", err))
+		return func() {}
+	}
+	return stop
 }
 
 // buildUIState constructs the gogpu App and its uiState — the fields that
@@ -293,7 +315,7 @@ func (s *uiState) wireFirstTab(gapp gpuApp) error {
 		if dir == "" {
 			dir = homeDir
 		}
-		_, err := s.mgr.New(session.Config{
+		sess, err := s.mgr.New(session.Config{
 			Command:          s.cfg.ShellCommand(),
 			Env:              append([]string(nil), s.cfg.Shell.Env...),
 			Dir:              dir,
@@ -308,6 +330,7 @@ func (s *uiState) wireFirstTab(gapp gpuApp) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", op, err)
 		}
+		s.attachOSC52HostRead(sess)
 		return nil
 	}
 	s.mgr.SetSpawn(func(cols, rows int) (*session.Session, error) {
@@ -321,7 +344,7 @@ func (s *uiState) wireFirstTab(gapp gpuApp) error {
 		if rows < 1 {
 			rows = 1
 		}
-		return session.New(session.Config{
+		sess, err := session.New(session.Config{
 			Command:          s.cfg.ShellCommand(),
 			Env:              append([]string(nil), s.cfg.Shell.Env...),
 			Dir:              dir,
@@ -333,8 +356,28 @@ func (s *uiState) wireFirstTab(gapp gpuApp) error {
 			ShellIntegration: s.cfg.Shell.Integration,
 			Log:              slog.Default().With(slog.String("op", op+".split")),
 		})
+		if err != nil {
+			return nil, err
+		}
+		s.attachOSC52HostRead(sess)
+		return sess, nil
 	})
 	return s.newTab()
+}
+
+// attachOSC52HostRead wires OSC 52 clipboard queries to the host pasteboard
+// when clipboard.osc52_read = "allow".
+func (s *uiState) attachOSC52HostRead(sess *session.Session) {
+	if sess == nil {
+		return
+	}
+	sess.SetHostClipboardRead(func() ([]byte, bool) {
+		text, err := clipboardReadNative()
+		if err != nil || text == "" {
+			return nil, false
+		}
+		return []byte(text), true
+	})
 }
 
 // wireConfigReload starts watching s.cfg's source file (see
@@ -575,6 +618,9 @@ func (s *uiState) handleKeyPress(key gpucontext.Key, mods gpucontext.Modifiers) 
 	if s.handleConfirmCloseKey(key) {
 		return
 	}
+	if s.handleHintsKey(key, mods) {
+		return
+	}
 	if s.handleSearchKey(key, mods) {
 		return
 	}
@@ -643,7 +689,7 @@ func (s *uiState) tryScrollbackKey(key gpucontext.Key, mods gpucontext.Modifiers
 
 func (s *uiState) handleKeyRelease(key gpucontext.Key, mods gpucontext.Modifiers) {
 	s.lastMods = mods
-	if s.searchActive() {
+	if s.searchActive() || s.hintsOverlayActive() {
 		return
 	}
 	active := s.mgr.Active()
@@ -741,8 +787,18 @@ func (s *uiState) dispatchAction(action Action) {
 		if s.searchActive() {
 			s.closeSearch()
 		} else {
+			s.closeURLHints()
 			s.openSearch()
 		}
+	case ActionOpenURLHints:
+		if s.hintsOverlayActive() {
+			s.closeURLHints()
+		} else {
+			s.closeSearch()
+			s.openURLHints()
+		}
+	case ActionShowScrollback:
+		s.showScrollbackInPager()
 	case ActionIncreaseFontSize:
 		s.adjustFontZoom(1)
 	case ActionDecreaseFontSize:
@@ -880,17 +936,18 @@ func (s *uiState) consumeLiveResizeSync(inLiveResize bool) (needFinalSync bool) 
 }
 
 // paintFrame (re)sizes s.frame to fw*fh RGBA8 pixels, clears it to the
-// background color, then paints the tab bar and (if a session is active)
-// the terminal grid and scrollbar overlay into it.
+// background color (or, for a single-pane dirty redraw, only the chrome
+// strip), then paints the tab bar and terminal grid into it.
 func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
+	prevSame := len(s.frame) >= fw*fh*4 && s.frameW == fw && s.frameH == fh
 	if needed := fw * fh * 4; needed > cap(s.frame) {
 		s.frame = make([]byte, needed, needed+needed/4)
+		prevSame = false
 	} else {
 		s.frame = s.frame[:needed]
 	}
 	s.frameW, s.frameH = fw, fh
 	bg := toRGBA(s.palette.Background)
-	fillRect(s.frame, fw, 0, 0, fw, fh, bg)
 
 	tabs := s.mgr.Tabs()
 	if !s.tabBarShowTabs() {
@@ -905,7 +962,6 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 		TabID:    s.tabDrag.tabID,
 		HoverIdx: s.hoverTabIdx,
 	}
-	s.tabBar.Layout(s.frame, fw, fh, tabBarH, s.palette, tabs, s.mgr.ActiveID(), pluginStatusText(s.pluginHost), drag, s.hoverPlus, s.tabBarShowPlus())
 
 	ox, oy := padPx, tabBarH+padPx
 	cw, ch := fw-2*padPx, fh-tabBarH-2*padPx
@@ -918,6 +974,32 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 	s.contentOX, s.contentOY, s.contentW, s.contentH = ox, oy, cw, ch
 	leaves, focus, ok := s.mgr.ActiveLayout(ox, oy, cw, ch)
 	s.activePaneRects = leaves
+
+	var dirtyRows map[int]bool
+	useDirty := false
+	if ok && len(leaves) == 1 && leaves[0].Session != nil && leaves[0].Session.ScrollOffset() == 0 {
+		lines, screenCh := leaves[0].Session.Term.TakePaintDirty()
+		if prevSame && !screenCh && len(lines) > 0 {
+			useDirty = true
+			dirtyRows = lines
+		}
+	} else if ok {
+		for _, leaf := range leaves {
+			if leaf.Session != nil {
+				_, _ = leaf.Session.Term.TakePaintDirty()
+			}
+		}
+	}
+
+	if useDirty {
+		// Keep prior grid pixels; refresh chrome strip only.
+		fillRect(s.frame, fw, 0, 0, fw, tabBarH+padPx, bg)
+	} else {
+		fillRect(s.frame, fw, 0, 0, fw, fh, bg)
+	}
+
+	s.tabBar.Layout(s.frame, fw, fh, tabBarH, s.palette, tabs, s.mgr.ActiveID(), pluginStatusText(s.pluginHost), drag, s.hoverPlus, s.tabBarShowPlus())
+
 	if ok {
 		if len(leaves) > 1 {
 			// Divider color fills the content area; each leaf paints over it.
@@ -927,7 +1009,11 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 			if leaf.Session == nil {
 				continue
 			}
-			s.painter.Paint(s.frame, fw, fh, leaf.X, leaf.Y, leaf.Session.Term, leaf.Session.ScrollOffset(), gridSelection(leaf.Session), gridPlacements(leaf.Session), s.blinkOn.Load())
+			rows := dirtyRows
+			if !useDirty || leaf.Session != focus {
+				rows = nil
+			}
+			s.painter.Paint(s.frame, fw, fh, leaf.X, leaf.Y, leaf.Session.Term, leaf.Session.ScrollOffset(), gridSelection(leaf.Session), gridPlacements(leaf.Session), s.blinkOn.Load(), rows)
 			if leaf.Session == focus {
 				s.paintScrollBarOverlay(fw, fh, leaf.Y, leaf.Session, time.Now().Before(s.scrollBarUntil))
 				if len(leaves) > 1 {
@@ -945,6 +1031,7 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 		}
 	}
 	s.paintSearchOverlay(fw, fh, padPx, tabBarH)
+	s.paintHintsOverlay(fw, fh)
 	s.paintConfirmCloseOverlay(fw, fh, padPx)
 	s.paintVisualBell(fw, fh)
 }
@@ -1236,7 +1323,7 @@ func gridSelection(sess *session.Session) Selection {
 		viewEnd.AbsLine = bottom
 		viewEnd.Col = cols - 1
 	}
-	sel := Selection{Active: true}
+	sel := Selection{Active: true, Rect: sess.SelectionRect()}
 	sel.Start.Col, sel.Start.Row = viewStart.Col, viewStart.AbsLine-top
 	sel.End.Col, sel.End.Row = viewEnd.Col, viewEnd.AbsLine-top
 	return sel
