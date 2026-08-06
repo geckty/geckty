@@ -98,6 +98,9 @@ type Glyph struct {
 	FG, BG    Color
 	Write     WriteID
 	Underline UnderlineStyle
+	// Hyperlink is the URI from OSC 8 for this cell (empty = none).
+	// Geckty addition — upstream cy/pkg/emu does not track OSC 8.
+	Hyperlink string
 }
 
 func (g Glyph) IsEmpty() bool {
@@ -121,14 +124,16 @@ func (g Glyph) Width() int {
 func (g Glyph) Equal(other Glyph) bool {
 	return g.Char == other.Char && g.Mode == other.Mode &&
 		g.FG == other.FG && g.BG == other.BG &&
-		g.Underline == other.Underline
+		g.Underline == other.Underline &&
+		g.Hyperlink == other.Hyperlink
 }
 
 // SameAttrs reports whether the two glyphs have the same visual attributes.
 func (g Glyph) SameAttrs(other Glyph) bool {
 	return g.Mode == other.Mode && g.FG == other.FG &&
 		g.BG == other.BG &&
-		g.Underline == other.Underline
+		g.Underline == other.Underline &&
+		g.Hyperlink == other.Hyperlink
 }
 
 func EmptyGlyph() Glyph {

@@ -279,6 +279,11 @@ func (p *Painter) paintRow(buf []byte, frameW, frameH int, line emu.Line, cols, 
 				ul = toRGBA(p.Palette.Resolve(st.underlineColor))
 			}
 			paintUnderline(buf, frameW, x0, x1, y1, st.underlineMode, ul)
+		} else if g.Hyperlink != "" {
+			// OSC 8 hyperlinks get a subtle underline so they're visible
+			// without requiring hover chrome.
+			linkUL := color.RGBA{R: 0x58, G: 0x33, B: 0xff, A: 0xff}
+			paintUnderline(buf, frameW, x0, x1, y1, emu.UnderlineSingle, linkUL)
 		}
 		if st.strikethrough {
 			sy := y + p.CellHeight/2

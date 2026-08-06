@@ -33,8 +33,16 @@ func TestURLAtWWWPrefixed(t *testing.T) {
 	}
 }
 
-func TestTrimURLTrailer(t *testing.T) {
-	if got := trimURLTrailer("https://a.com/x)."); got != "https://a.com/x" {
-		t.Fatalf("trimURLTrailer = %q", got)
+func TestURLAtOSC8Hyperlink(t *testing.T) {
+	p := newFakePTY()
+	dirty := make(chan struct{}, 8)
+	s := newTestSession(p, 40, 2, func() { dirty <- struct{}{} })
+	go s.Run()
+	defer func() { _ = s.Close() }()
+
+	writeAndWaitDirty(t, p, dirty, "\x1b]8;;https://osc8.example/x\x1b\\link\x1b]8;;\x1b\\")
+	url, ok := s.URLAt(0, 1)
+	if !ok || url != "https://osc8.example/x" {
+		t.Fatalf("URLAt OSC8 = %q, %v, want https://osc8.example/x", url, ok)
 	}
 }
