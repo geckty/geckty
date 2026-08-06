@@ -331,3 +331,53 @@ func loadFontBundle(configuredFamily string, size, scaleFactor float64, role fon
 	}
 	return b
 }
+
+// platformSymbolFontPaths lists outline symbol/emoji-capable fonts to try
+// when the primary monospace face has no glyph for a rune. Color emoji
+// fonts (Apple Color Emoji, Noto Color Emoji) are skipped — golang.org/x/
+// image/font only rasterizes outline glyphs.
+func platformSymbolFontPaths() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{
+			"/System/Library/Fonts/Apple Symbols.ttf",
+			"/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+			"/Library/Fonts/Arial Unicode.ttf",
+			"/System/Library/Fonts/LastResort.otf",
+		}
+	case osWindows:
+		winFonts := filepath.Join(os.Getenv("SystemRoot"), "Fonts")
+		if winFonts == `\Fonts` {
+			winFonts = `C:\Windows\Fonts`
+		}
+		return []string{
+			filepath.Join(winFonts, "seguisym.ttf"),
+			filepath.Join(winFonts, "arialuni.ttf"),
+			filepath.Join(winFonts, "seguili.ttf"),
+		}
+	default:
+		return []string{
+			"/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+			"/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf",
+			"/usr/share/fonts/truetype/ancient-scripts/Symbola_hint.ttf",
+			"/usr/share/fonts/TTF/Symbola.ttf",
+			"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+		}
+	}
+}
+
+// loadSymbolFallbackFace opens the first usable platform symbol font at
+// the given size/scale. Returns nil when none are installed.
+func loadSymbolFallbackFace(size, scaleFactor float64) font.Face {
+	dpi := 72.0 * scaleFactor
+	for _, p := range platformSymbolFontPaths() {
+		b, err := os.ReadFile(p) //nolint:gosec // G304: hardcoded system font paths
+		if err != nil || len(b) == 0 {
+			continue
+		}
+		if f, err := openFace(b, size, dpi); err == nil && f != nil {
+			return f
+		}
+	}
+	return nil
+}

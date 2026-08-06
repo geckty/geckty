@@ -92,6 +92,8 @@ type uiState struct {
 	scrollBarUntil time.Time
 	selEdgeLast    time.Time // last edge auto-scroll tick while dragging a selection
 	search         searchState
+	confirmClose   bool // pending multi-tab quit confirmation overlay
+	visualBellUntil time.Time
 	lastMods       gpucontext.Modifiers // latest known mods for Shift+wheel override
 
 	scrollAccumPx float64
@@ -441,7 +443,14 @@ func (s *uiState) wireWindow(win gpuWindow) {
 	})
 	win.SetOnPointer(s.handlePointerEvent)
 	win.SetOnScroll(s.handleScrollEvent)
-	win.SetOnClose(func() bool { return true })
+	win.SetOnClose(func() bool {
+		if s.cfg != nil && s.cfg.Window.ConfirmClose && len(s.mgr.Tabs()) > 1 {
+			s.confirmClose = true
+			s.app.RequestRedraw()
+			return false // cancel OS close; overlay asks first
+		}
+		return true
+	})
 }
 
 // wireEventSource registers keyboard handling on gapp's global EventSource
@@ -520,6 +529,9 @@ func (s *uiState) setKeyEcho(text string) {
 func (s *uiState) handleKeyPress(key gpucontext.Key, mods gpucontext.Modifiers) {
 	s.keyEcho = ""
 	s.lastMods = mods
+	if s.handleConfirmCloseKey(key) {
+		return
+	}
 	if s.handleSearchKey(key, mods) {
 		return
 	}
@@ -725,6 +737,7 @@ func (s *uiState) onDraw(ctx *gogpulib.Context) {
 	newCols, newRows := gridSize(image.Pt(fw-2*padPx, fh-tabBarH-2*padPx), s.cellW, s.cellH)
 
 	s.paintFrame(fw, fh, tabBarH, padPx)
+	s.drainBells()
 	s.triggerResizeIfNeeded(newCols, newRows, inLiveResize, needFinalSync)
 	s.drainClipboardWrites()
 	s.uploadAndPresent(ctx, fw, fh)
@@ -801,6 +814,72 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 		s.paintCommandBorder(fw, fh, active)
 	}
 	s.paintSearchOverlay(fw, fh, padPx, tabBarH)
+	s.paintConfirmCloseOverlay(fw, fh, padPx)
+	s.paintVisualBell(fw, fh)
+}
+
+func (s *uiState) drainBells() {
+	for _, tb := range s.mgr.Tabs() {
+		if tb.Session != nil && tb.Session.Term.TakeBell() {
+			s.visualBellUntil = time.Now().Add(120 * time.Millisecond)
+			s.app.RequestRedraw()
+			time.AfterFunc(130*time.Millisecond, func() { s.app.RequestRedraw() })
+		}
+	}
+}
+
+func (s *uiState) paintVisualBell(fw, fh int) {
+	if time.Now().After(s.visualBellUntil) {
+		return
+	}
+	// Brief inverted flash around the frame edge.
+	c := color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x55}
+	t := dpToPx(4, s.scale)
+	if t < 2 {
+		t = 2
+	}
+	blendRect(s.frame, fw, 0, 0, fw, t, c)
+	blendRect(s.frame, fw, 0, fh-t, fw, fh, c)
+	blendRect(s.frame, fw, 0, 0, t, fh, c)
+	blendRect(s.frame, fw, fw-t, 0, fw, fh, c)
+}
+
+func (s *uiState) handleConfirmCloseKey(key gpucontext.Key) bool {
+	if !s.confirmClose {
+		return false
+	}
+	switch key {
+	case gpucontext.KeyEscape:
+		s.confirmClose = false
+		s.app.RequestRedraw()
+		return true
+	case gpucontext.KeyEnter:
+		s.confirmClose = false
+		s.app.Quit()
+		return true
+	}
+	return true // swallow other keys while confirming
+}
+
+func (s *uiState) paintConfirmCloseOverlay(fw, fh, padPx int) {
+	if !s.confirmClose {
+		return
+	}
+	n := len(s.mgr.Tabs())
+	msg := fmt.Sprintf("Close %d tabs?  Enter = yes, Esc = cancel", n)
+	barH := s.cellH + 2*padPx
+	if barH < 28 {
+		barH = 28
+	}
+	y0 := (fh - barH) / 2
+	if y0 < 0 {
+		y0 = 0
+	}
+	bg := color.RGBA{R: 0x2a, G: 0x2c, B: 0x30, A: 0xf0}
+	blendRect(s.frame, fw, padPx, y0, fw-padPx, y0+barH, bg)
+	if s.tabBar != nil {
+		s.tabBar.drawText(s.frame, fw, fh, msg, padPx*2, y0, fw-4*padPx, barH, toRGBA(s.palette.Foreground))
+	}
 }
 
 // commandBorderThicknessDp is the active tab's OSC 133 status border's
@@ -942,6 +1021,9 @@ func (s *uiState) ensureFonts(scale float64) {
 
 	s.fontSizeCurrent = size
 	s.scale = scale
+
+	s.painter.fallbackFace = loadSymbolFallbackFace(size, scale)
+	s.painter.fallbackAtlas = nil // rebuilt in ensureAtlas
 }
 
 // paintScrollBarOverlay draws a translucent scrollbar track spanning the

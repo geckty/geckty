@@ -9,7 +9,7 @@ width = 1000
 height = 650
 # Content inset around the terminal grid, in logical dp (hot-reloaded).
 padding = 8
-# Reserved: ask before quitting with multiple tabs (UI wiring TBD).
+# Reserved: ask before quitting with multiple tabs (wired: Enter confirms, Esc cancels).
 # confirm_close = false
 
 [font]

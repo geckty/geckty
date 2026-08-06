@@ -49,6 +49,11 @@ type Painter struct {
 	// the other three only when Fonts has a dedicated face for them (see
 	// faceAndAtlas's fallback when it doesn't).
 	atlases [4]*glyphAtlas
+
+	// fallbackFace/atlas rasterize glyphs the primary mono face lacks
+	// (emoji outlines, symbols, box-drawing from a symbol font).
+	fallbackFace  font.Face
+	fallbackAtlas *glyphAtlas
 }
 
 // styleIndex maps a cell's bold/italic attributes to a slot in
@@ -78,6 +83,9 @@ func (p *Painter) ensureAtlas() {
 			p.atlases[i] = newGlyphAtlas(f, p.Ascent)
 		}
 	}
+	if p.fallbackFace != nil && !p.fallbackAtlas.valid(p.fallbackFace, p.Ascent) {
+		p.fallbackAtlas = newGlyphAtlas(p.fallbackFace, p.Ascent)
+	}
 }
 
 // faceAndAtlas returns the face and atlas for a cell's bold/italic
@@ -87,6 +95,20 @@ func (p *Painter) ensureAtlas() {
 func (p *Painter) faceAndAtlas(bold, italic bool) (font.Face, *glyphAtlas) {
 	face, idx := p.Fonts.face(bold, italic)
 	return face, p.atlases[idx]
+}
+
+// glyphEntryFor looks up r in the style atlas, then the symbol/emoji
+// fallback atlas when the primary face has no glyph.
+func (p *Painter) glyphEntryFor(bold, italic bool, r rune) (glyphEntry, bool) {
+	if _, atlas := p.faceAndAtlas(bold, italic); atlas != nil {
+		if e, ok := atlas.get(r); ok {
+			return e, true
+		}
+	}
+	if p.fallbackAtlas != nil {
+		return p.fallbackAtlas.get(r)
+	}
+	return glyphEntry{}, false
 }
 
 // Paint fills the grid's rect (originX,originY)-(originX+cols*CellWidth,
@@ -265,11 +287,9 @@ func (p *Painter) paintRow(buf []byte, frameW, frameH int, line emu.Line, cols, 
 		}
 
 		if !st.invisible && g.Char != ' ' {
-			if _, atlas := p.faceAndAtlas(st.bold, st.italic); atlas != nil {
-				if e, ok := atlas.get(g.Char); ok {
-					dr := e.drRel.Add(image.Pt(x0, y))
-					blitGlyphClipped(buf, frameW, frameH, dr, e.mask, e.maskp, fgColor, x0-glyphBleedPx, y, x1+glyphBleedPx, y1)
-				}
+			if e, ok := p.glyphEntryFor(st.bold, st.italic, g.Char); ok {
+				dr := e.drRel.Add(image.Pt(x0, y))
+				blitGlyphClipped(buf, frameW, frameH, dr, e.mask, e.maskp, fgColor, x0-glyphBleedPx, y, x1+glyphBleedPx, y1)
 			}
 		}
 

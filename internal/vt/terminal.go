@@ -31,6 +31,9 @@ type Terminal struct {
 	// CommandState), folded in by Parse from emu's per-write event log
 	// each call — see foldSemanticPrompts.
 	cmd CommandState
+
+	// bellPending is set when BEL was seen since the last TakeBell.
+	bellPending bool
 }
 
 // CommandState summarizes OSC 133 shell-integration state for a UI to
@@ -90,6 +93,7 @@ func (t *Terminal) Parse(p []byte) int {
 	defer t.mu.Unlock()
 	n := t.Terminal.Parse(p)
 	t.foldSemanticPrompts()
+	t.foldBell()
 	return n
 }
 
@@ -127,6 +131,31 @@ func (t *Terminal) foldSemanticPrompts() {
 		}
 	}
 	dirty.SemanticPrompts = dirty.SemanticPrompts[:0]
+}
+
+// foldBell drains Dirty.Bell into bellPending. Called with t.mu held.
+func (t *Terminal) foldBell() {
+	src, ok := t.Terminal.(semanticPromptSource)
+	if !ok {
+		return
+	}
+	dirty := src.Changes()
+	if dirty.Bell {
+		t.bellPending = true
+		dirty.Bell = false
+	}
+}
+
+// TakeBell reports whether a BEL was received since the previous call and
+// clears the pending flag. The UI uses this for a brief visual flash.
+func (t *Terminal) TakeBell() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.bellPending {
+		return false
+	}
+	t.bellPending = false
+	return true
 }
 
 // CommandState returns the terminal's current OSC 133 command-run state
