@@ -149,6 +149,30 @@ func TestSessionGraphicsClearedOnAltScreenEntry(t *testing.T) {
 	}
 }
 
+func TestSessionGraphicsDeleteByID(t *testing.T) {
+	p := newFakePTY()
+	dirty := make(chan struct{}, 8)
+	s := newTestSession(p, 10, 5, func() { dirty <- struct{}{} })
+	go s.Run()
+	drainWrites(p)
+	defer func() { _ = s.Close() }()
+
+	writeAndWaitDirty(t, p, dirty, rgbaAPC(7, 1, 1, 1, 1, 1))
+	writeAndWaitDirty(t, p, dirty, rgbaAPC(8, 1, 1, 2, 2, 2))
+	if len(s.Placements()) != 2 {
+		t.Fatalf("got %d placements, want 2", len(s.Placements()))
+	}
+	writeAndWaitDirty(t, p, dirty, "\x1b_Ga=d,d=i,i=7;\x1b\\")
+	got := s.Placements()
+	if len(got) != 1 || got[0].ID != 8 {
+		t.Fatalf("after delete id=7: %+v", got)
+	}
+	writeAndWaitDirty(t, p, dirty, "\x1b_Ga=d;\x1b\\")
+	if len(s.Placements()) != 0 {
+		t.Fatalf("after delete all: %d placements", len(s.Placements()))
+	}
+}
+
 func TestSessionGraphicsBoundedPlacementCount(t *testing.T) {
 	p := newFakePTY()
 	dirty := make(chan struct{}, 256)

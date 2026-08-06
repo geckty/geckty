@@ -86,19 +86,19 @@ type uiState struct {
 	cellW, cellH, asc int
 
 	// Tab-bar interaction state.
-	tabDrag        tabDragState
-	tabScrollX     int
-	hoverTabIdx    int
-	hoverPlus      bool
-	scrollBarUntil time.Time
-	selEdgeLast    time.Time // last edge auto-scroll tick while dragging a selection
-	search         searchState
-	hintsActive    bool
-	hints          []session.URLHit
-	hintsLabels    []string
-	confirmClose   bool // pending multi-tab quit confirmation overlay
+	tabDrag         tabDragState
+	tabScrollX      int
+	hoverTabIdx     int
+	hoverPlus       bool
+	scrollBarUntil  time.Time
+	selEdgeLast     time.Time // last edge auto-scroll tick while dragging a selection
+	search          searchState
+	hintsActive     bool
+	hints           []session.URLHit
+	hintsLabels     []string
+	confirmClose    bool // pending multi-tab quit confirmation overlay
 	visualBellUntil time.Time
-	lastMods       gpucontext.Modifiers // latest known mods for Shift+wheel override
+	lastMods        gpucontext.Modifiers // latest known mods for Shift+wheel override
 
 	scrollAccumPx float64
 

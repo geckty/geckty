@@ -263,15 +263,15 @@ func viewport(term *vt.Terminal, rows, scrollOffset int) (lines []emu.Line, top 
 }
 
 type cellStyle struct {
-	fg, bg          emu.Color
-	bold            bool
-	italic          bool
-	underline       bool
-	underlineMode   emu.UnderlineMode
-	underlineColor  emu.Color
-	strikethrough   bool
-	dim             bool
-	invisible       bool
+	fg, bg         emu.Color
+	bold           bool
+	italic         bool
+	underline      bool
+	underlineMode  emu.UnderlineMode
+	underlineColor emu.Color
+	strikethrough  bool
+	dim            bool
+	invisible      bool
 }
 
 func styleOf(g emu.Glyph) cellStyle {

@@ -28,8 +28,6 @@ size = 13
 # Setting either to false keeps that attribute's text at regular weight.
 bold = true
 italic = true
-# ligatures: reserved for HarfBuzz-shaped liga/calt (not wired yet).
-# ligatures = false
 # ligatures = false  # reserved; requires HarfBuzz (not yet wired)
 
 [ui_font]

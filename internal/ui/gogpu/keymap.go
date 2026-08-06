@@ -14,48 +14,48 @@ type Action string
 
 // Actions Keymap recognizes.
 const (
-	ActionNewTab           Action = "new_tab"
-	ActionCloseTab         Action = "close_tab"
-	ActionNextTab          Action = "next_tab"
-	ActionPrevTab          Action = "prev_tab"
-	ActionCopy             Action = "copy"
-	ActionPaste            Action = "paste"
-	ActionSearchScrollback Action = "search_scrollback"
-	ActionOpenURLHints     Action = "open_url_hints"
-	ActionShowScrollback   Action = "show_scrollback"
-	ActionIncreaseFontSize Action = "increase_font_size"
-	ActionDecreaseFontSize Action = "decrease_font_size"
-	ActionResetFontSize    Action = "reset_font_size"
-	ActionSplitVertical    Action = "split_vertical"
-	ActionSplitHorizontal  Action = "split_horizontal"
-	ActionNextPane         Action = "next_pane"
-	ActionPrevPane         Action = "prev_pane"
-	ActionClosePane        Action = "close_pane"
-	ActionScrollToPrevPrompt Action = "scroll_to_prev_prompt"
-	ActionScrollToNextPrompt Action = "scroll_to_next_prompt"
+	ActionNewTab              Action = "new_tab"
+	ActionCloseTab            Action = "close_tab"
+	ActionNextTab             Action = "next_tab"
+	ActionPrevTab             Action = "prev_tab"
+	ActionCopy                Action = "copy"
+	ActionPaste               Action = "paste"
+	ActionSearchScrollback    Action = "search_scrollback"
+	ActionOpenURLHints        Action = "open_url_hints"
+	ActionShowScrollback      Action = "show_scrollback"
+	ActionIncreaseFontSize    Action = "increase_font_size"
+	ActionDecreaseFontSize    Action = "decrease_font_size"
+	ActionResetFontSize       Action = "reset_font_size"
+	ActionSplitVertical       Action = "split_vertical"
+	ActionSplitHorizontal     Action = "split_horizontal"
+	ActionNextPane            Action = "next_pane"
+	ActionPrevPane            Action = "prev_pane"
+	ActionClosePane           Action = "close_pane"
+	ActionScrollToPrevPrompt  Action = "scroll_to_prev_prompt"
+	ActionScrollToNextPrompt  Action = "scroll_to_next_prompt"
 	ActionSelectLastCmdOutput Action = "select_last_command_output"
 )
 
 var validActions = map[string]Action{
-	string(ActionNewTab):           ActionNewTab,
-	string(ActionCloseTab):         ActionCloseTab,
-	string(ActionNextTab):          ActionNextTab,
-	string(ActionPrevTab):          ActionPrevTab,
-	string(ActionCopy):             ActionCopy,
-	string(ActionPaste):            ActionPaste,
-	string(ActionSearchScrollback): ActionSearchScrollback,
-	string(ActionOpenURLHints):     ActionOpenURLHints,
-	string(ActionShowScrollback):   ActionShowScrollback,
-	string(ActionIncreaseFontSize): ActionIncreaseFontSize,
-	string(ActionDecreaseFontSize): ActionDecreaseFontSize,
-	string(ActionResetFontSize):    ActionResetFontSize,
-	string(ActionSplitVertical):    ActionSplitVertical,
-	string(ActionSplitHorizontal):  ActionSplitHorizontal,
-	string(ActionNextPane):         ActionNextPane,
-	string(ActionPrevPane):         ActionPrevPane,
-	string(ActionClosePane):        ActionClosePane,
-	string(ActionScrollToPrevPrompt): ActionScrollToPrevPrompt,
-	string(ActionScrollToNextPrompt): ActionScrollToNextPrompt,
+	string(ActionNewTab):              ActionNewTab,
+	string(ActionCloseTab):            ActionCloseTab,
+	string(ActionNextTab):             ActionNextTab,
+	string(ActionPrevTab):             ActionPrevTab,
+	string(ActionCopy):                ActionCopy,
+	string(ActionPaste):               ActionPaste,
+	string(ActionSearchScrollback):    ActionSearchScrollback,
+	string(ActionOpenURLHints):        ActionOpenURLHints,
+	string(ActionShowScrollback):      ActionShowScrollback,
+	string(ActionIncreaseFontSize):    ActionIncreaseFontSize,
+	string(ActionDecreaseFontSize):    ActionDecreaseFontSize,
+	string(ActionResetFontSize):       ActionResetFontSize,
+	string(ActionSplitVertical):       ActionSplitVertical,
+	string(ActionSplitHorizontal):     ActionSplitHorizontal,
+	string(ActionNextPane):            ActionNextPane,
+	string(ActionPrevPane):            ActionPrevPane,
+	string(ActionClosePane):           ActionClosePane,
+	string(ActionScrollToPrevPrompt):  ActionScrollToPrevPrompt,
+	string(ActionScrollToNextPrompt):  ActionScrollToNextPrompt,
 	string(ActionSelectLastCmdOutput): ActionSelectLastCmdOutput,
 }
 

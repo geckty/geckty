@@ -81,8 +81,8 @@ func trimURLTrailer(u string) string {
 
 // URLHit is one URL found in History()+Screen() (OSC 8 or plain-text).
 type URLHit struct {
-	URL            string
-	AbsLine, Col   int
+	URL          string
+	AbsLine, Col int
 }
 
 // CollectURLs scans History()+Screen() for OSC 8 hyperlinks and plain
