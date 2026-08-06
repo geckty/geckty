@@ -67,7 +67,8 @@ func defaultKeybindings() []Keybinding {
 	if runtime.GOOS == "darwin" {
 		return []Keybinding{
 			{Key: "T", Mods: []string{"cmd"}, Action: "new_tab"},
-			{Key: "W", Mods: []string{"cmd"}, Action: "close_tab"},
+			{Key: "W", Mods: []string{"cmd"}, Action: "close_pane"},
+			{Key: "W", Mods: []string{"cmd", "shift"}, Action: "close_tab"},
 			{Key: "]", Mods: []string{"cmd", "shift"}, Action: "next_tab"},
 			{Key: "[", Mods: []string{"cmd", "shift"}, Action: "prev_tab"},
 			{Key: "C", Mods: []string{"cmd"}, Action: "copy"},
@@ -76,11 +77,16 @@ func defaultKeybindings() []Keybinding {
 			{Key: "=", Mods: []string{"cmd"}, Action: "increase_font_size"},
 			{Key: "-", Mods: []string{"cmd"}, Action: "decrease_font_size"},
 			{Key: "0", Mods: []string{"cmd"}, Action: "reset_font_size"},
+			{Key: "D", Mods: []string{"cmd"}, Action: "split_vertical"},
+			{Key: "D", Mods: []string{"cmd", "shift"}, Action: "split_horizontal"},
+			{Key: "]", Mods: []string{"cmd", "alt"}, Action: "next_pane"},
+			{Key: "[", Mods: []string{"cmd", "alt"}, Action: "prev_pane"},
 		}
 	}
 	return []Keybinding{
 		{Key: "T", Mods: []string{"ctrl", "shift"}, Action: "new_tab"},
-		{Key: "W", Mods: []string{"ctrl", "shift"}, Action: "close_tab"},
+		{Key: "W", Mods: []string{"ctrl", "shift"}, Action: "close_pane"},
+		{Key: "W", Mods: []string{"ctrl", "alt"}, Action: "close_tab"},
 		{Key: "Tab", Mods: []string{"ctrl"}, Action: "next_tab"},
 		{Key: "Tab", Mods: []string{"ctrl", "shift"}, Action: "prev_tab"},
 		{Key: "C", Mods: []string{"ctrl", "shift"}, Action: "copy"},
@@ -89,5 +95,9 @@ func defaultKeybindings() []Keybinding {
 		{Key: "=", Mods: []string{"ctrl"}, Action: "increase_font_size"},
 		{Key: "-", Mods: []string{"ctrl"}, Action: "decrease_font_size"},
 		{Key: "0", Mods: []string{"ctrl"}, Action: "reset_font_size"},
+		{Key: "D", Mods: []string{"ctrl", "shift"}, Action: "split_vertical"},
+		{Key: "D", Mods: []string{"ctrl", "alt"}, Action: "split_horizontal"},
+		{Key: "]", Mods: []string{"ctrl", "alt"}, Action: "next_pane"},
+		{Key: "[", Mods: []string{"ctrl", "alt"}, Action: "prev_pane"},
 	}
 }

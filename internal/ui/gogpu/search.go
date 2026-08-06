@@ -200,8 +200,12 @@ func (s *uiState) paintSearchOverlay(fw, fh, padPx, tabBarH int) {
 		return
 	}
 	viewRow := abs - top
-	x0 := padPx + s.search.hit.Col*s.cellW
-	yHit := tabBarH + padPx + viewRow*s.cellH
+	ox, oy := s.contentOX, s.contentOY
+	if pane, ok := s.paneForSession(active); ok {
+		ox, oy = pane.X, pane.Y
+	}
+	x0 := ox + s.search.hit.Col*s.cellW
+	yHit := oy + viewRow*s.cellH
 	x1 := x0 + s.search.hit.Len*s.cellW
 	hi := color.RGBA{R: 0xea, G: 0xec, B: 0x23, A: 0x90}
 	blendRect(s.frame, fw, x0, yHit, x1, yHit+s.cellH, hi)

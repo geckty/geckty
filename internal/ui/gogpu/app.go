@@ -129,6 +129,10 @@ type uiState struct {
 	// unchanged; once it ends, do one full repaint at the final size and
 	// only then tell the PTY about the new size.
 	pendingTexSync bool
+
+	// Content area for the active tab's pane layout (device pixels).
+	contentOX, contentOY, contentW, contentH int
+	activePaneRects                          []session.PaneRect
 }
 
 // Backend implements the ui.Backend interface (internal/ui/backend.go) by
@@ -251,9 +255,24 @@ func (s *uiState) wireSessionManager(gapp gpuApp) {
 			gapp.Quit()
 		}
 	})
-	s.resizeDebouncer = newResizeDebouncer(resizeDebounceDelay, func(cols, rows int) {
-		for _, tb := range s.mgr.Tabs() {
-			if err := tb.Session.Resize(cols, rows); err != nil {
+	s.resizeDebouncer = newResizeDebouncer(resizeDebounceDelay, func(_, _ int) {
+		s.resizeAllPanes()
+	})
+}
+
+// resizeAllPanes applies the current content rectangle to every tab's
+// pane tree, resizing each leaf session to its cell grid.
+func (s *uiState) resizeAllPanes() {
+	if s.mgr == nil || s.cellW <= 0 || s.cellH <= 0 || s.contentW <= 0 || s.contentH <= 0 {
+		return
+	}
+	s.mgr.EachTabLayout(s.contentOX, s.contentOY, s.contentW, s.contentH, func(leaves []session.PaneRect) {
+		for _, leaf := range leaves {
+			if leaf.Session == nil {
+				continue
+			}
+			cols, rows := gridSize(image.Pt(leaf.W, leaf.H), s.cellW, s.cellH)
+			if err := leaf.Session.Resize(cols, rows); err != nil {
 				slog.Warn("session resize failed", slog.Any("error", err))
 			}
 		}
@@ -291,6 +310,30 @@ func (s *uiState) wireFirstTab(gapp gpuApp) error {
 		}
 		return nil
 	}
+	s.mgr.SetSpawn(func(cols, rows int) (*session.Session, error) {
+		dir := strings.TrimSpace(s.cfg.Shell.WorkingDir)
+		if dir == "" {
+			dir = homeDir
+		}
+		if cols < 1 {
+			cols = 1
+		}
+		if rows < 1 {
+			rows = 1
+		}
+		return session.New(session.Config{
+			Command:          s.cfg.ShellCommand(),
+			Env:              append([]string(nil), s.cfg.Shell.Env...),
+			Dir:              dir,
+			Cols:             cols,
+			Rows:             rows,
+			HistoryLimit:     s.cfg.Scrollback.Lines,
+			Clipboard:        session.ParseClipboardPolicy(s.cfg.Clipboard.OSC52Write, s.cfg.Clipboard.OSC52Read, s.cfg.Clipboard.MaxSize),
+			OnDirty:          gapp.RequestRedraw,
+			ShellIntegration: s.cfg.Shell.Integration,
+			Log:              slog.Default().With(slog.String("op", op+".split")),
+		})
+	})
 	return s.newTab()
 }
 
@@ -647,11 +690,23 @@ func (s *uiState) dispatchAction(action Action) {
 	case ActionNewTab:
 		_ = s.newTab()
 	case ActionCloseTab:
+		if id := s.mgr.ActiveID(); id >= 0 {
+			_ = s.mgr.Close(id)
+		}
+	case ActionClosePane:
 		_ = s.mgr.CloseActive()
 	case ActionNextTab:
 		s.mgr.Next()
 	case ActionPrevTab:
 		s.mgr.Prev()
+	case ActionNextPane:
+		s.mgr.NextPane()
+	case ActionPrevPane:
+		s.mgr.PrevPane()
+	case ActionSplitVertical:
+		s.splitActivePane(session.SplitVertical)
+	case ActionSplitHorizontal:
+		s.splitActivePane(session.SplitHorizontal)
 	case ActionCopy:
 		if active := s.mgr.Active(); active != nil {
 			if text, ok := active.SelectedText(); ok && text != "" {
@@ -680,6 +735,35 @@ func (s *uiState) dispatchAction(action Action) {
 	case ActionResetFontSize:
 		s.adjustFontZoom(0)
 	}
+}
+
+// splitActivePane splits the focused pane, then reflows every leaf's PTY size.
+func (s *uiState) splitActivePane(dir session.SplitDir) {
+	active := s.mgr.Active()
+	if active == nil {
+		return
+	}
+	active.Term.RLock()
+	sz := active.Term.Size()
+	active.Term.RUnlock()
+	cols, rows := sz.C, sz.R
+	switch dir {
+	case session.SplitVertical:
+		cols = cols / 2
+		if cols < 1 {
+			cols = 1
+		}
+	default:
+		rows = rows / 2
+		if rows < 1 {
+			rows = 1
+		}
+	}
+	if !s.mgr.Split(dir, cols, rows) {
+		return
+	}
+	s.resizeAllPanes()
+	s.app.RequestRedraw()
 }
 
 const (
@@ -808,10 +892,42 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 	}
 	s.tabBar.Layout(s.frame, fw, fh, tabBarH, s.palette, tabs, s.mgr.ActiveID(), pluginStatusText(s.pluginHost), drag, s.hoverPlus, s.tabBarShowPlus())
 
-	if active := s.mgr.Active(); active != nil {
-		s.painter.Paint(s.frame, fw, fh, padPx, tabBarH+padPx, active.Term, active.ScrollOffset(), gridSelection(active), gridPlacements(active), s.blinkOn.Load())
-		s.paintScrollBarOverlay(fw, fh, tabBarH+padPx, active, time.Now().Before(s.scrollBarUntil))
-		s.paintCommandBorder(fw, fh, active)
+	ox, oy := padPx, tabBarH+padPx
+	cw, ch := fw-2*padPx, fh-tabBarH-2*padPx
+	if cw < 1 {
+		cw = 1
+	}
+	if ch < 1 {
+		ch = 1
+	}
+	s.contentOX, s.contentOY, s.contentW, s.contentH = ox, oy, cw, ch
+	leaves, focus, ok := s.mgr.ActiveLayout(ox, oy, cw, ch)
+	s.activePaneRects = leaves
+	if ok {
+		if len(leaves) > 1 {
+			// Divider color fills the content area; each leaf paints over it.
+			fillRect(s.frame, fw, ox, oy, ox+cw, oy+ch, color.RGBA{R: 0x3a, G: 0x3c, B: 0x40, A: 0xff})
+		}
+		for _, leaf := range leaves {
+			if leaf.Session == nil {
+				continue
+			}
+			s.painter.Paint(s.frame, fw, fh, leaf.X, leaf.Y, leaf.Session.Term, leaf.Session.ScrollOffset(), gridSelection(leaf.Session), gridPlacements(leaf.Session), s.blinkOn.Load())
+			if leaf.Session == focus {
+				s.paintScrollBarOverlay(fw, fh, leaf.Y, leaf.Session, time.Now().Before(s.scrollBarUntil))
+				if len(leaves) > 1 {
+					ring := color.RGBA{R: 0x58, G: 0x33, B: 0xff, A: 0xaa}
+					const t = 2
+					blendRect(s.frame, fw, leaf.X, leaf.Y, leaf.X+leaf.W, leaf.Y+t, ring)
+					blendRect(s.frame, fw, leaf.X, leaf.Y+leaf.H-t, leaf.X+leaf.W, leaf.Y+leaf.H, ring)
+					blendRect(s.frame, fw, leaf.X, leaf.Y, leaf.X+t, leaf.Y+leaf.H, ring)
+					blendRect(s.frame, fw, leaf.X+leaf.W-t, leaf.Y, leaf.X+leaf.W, leaf.Y+leaf.H, ring)
+				}
+			}
+		}
+		if focus != nil {
+			s.paintCommandBorder(fw, fh, focus)
+		}
 	}
 	s.paintSearchOverlay(fw, fh, padPx, tabBarH)
 	s.paintConfirmCloseOverlay(fw, fh, padPx)
@@ -819,8 +935,8 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 }
 
 func (s *uiState) drainBells() {
-	for _, tb := range s.mgr.Tabs() {
-		if tb.Session != nil && tb.Session.Term.TakeBell() {
+	for _, sess := range s.mgr.AllSessions() {
+		if sess != nil && sess.Term.TakeBell() {
 			s.visualBellUntil = time.Now().Add(120 * time.Millisecond)
 			s.app.RequestRedraw()
 			time.AfterFunc(130*time.Millisecond, func() { s.app.RequestRedraw() })

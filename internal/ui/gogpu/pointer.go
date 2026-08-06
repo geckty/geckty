@@ -24,7 +24,7 @@ const (
 
 // handlePointerEvent routes pointer events to the tab bar or the grid:
 // the tab bar if the press/drag started there or the pointer is currently
-// in its Y range, otherwise the terminal grid.
+// in its Y range, otherwise the terminal grid (hit-testing panes when split).
 func (s *uiState) handlePointerEvent(ev gpucontext.PointerEvent) {
 	x, y := s.toDevicePx(ev.X, ev.Y)
 	tabBarPx := s.tabBarHeightPx()
@@ -46,17 +46,47 @@ func (s *uiState) handlePointerEvent(ev gpucontext.PointerEvent) {
 	if active == nil {
 		return
 	}
-	padPx := dpToPx(s.contentPadDp(), s.scale)
 	switch ev.Type {
 	case gpucontext.PointerDown:
-		s.handleButton(active, x, y, tabBarPx, padPx, ev.Buttons, true, ev.Modifiers)
+		if pane, ok := s.paneAt(x, y); ok && pane.Session != nil {
+			if pane.Session != active {
+				s.mgr.SetFocus(pane.Session)
+				active = pane.Session
+			}
+			s.handleButton(active, x, y, pane.X, pane.Y, ev.Buttons, true, ev.Modifiers)
+		}
 	case gpucontext.PointerUp:
-		s.handleButton(active, x, y, tabBarPx, padPx, ev.Buttons, false, ev.Modifiers)
+		if pane, ok := s.paneForSession(active); ok {
+			s.handleButton(active, x, y, pane.X, pane.Y, ev.Buttons, false, ev.Modifiers)
+		}
 	case gpucontext.PointerMove:
 		if ev.Buttons.HasLeft() {
-			s.handleDrag(active, x, y, tabBarPx, padPx)
+			if pane, ok := s.paneForSession(active); ok {
+				s.handleDrag(active, x, y, pane.X, pane.Y)
+			}
 		}
 	}
+}
+
+func (s *uiState) paneAt(x, y int) (session.PaneRect, bool) {
+	for _, p := range s.activePaneRects {
+		if x >= p.X && x < p.X+p.W && y >= p.Y && y < p.Y+p.H {
+			return p, true
+		}
+	}
+	return session.PaneRect{}, false
+}
+
+func (s *uiState) paneForSession(sess *session.Session) (session.PaneRect, bool) {
+	if sess == nil {
+		return session.PaneRect{}, false
+	}
+	for _, p := range s.activePaneRects {
+		if p.Session == sess {
+			return p, true
+		}
+	}
+	return session.PaneRect{}, false
 }
 
 func (s *uiState) toDevicePx(x, y float64) (int, int) {
@@ -74,20 +104,19 @@ func (s *uiState) handleScrollEvent(ev gpucontext.ScrollEvent) {
 		s.handleTabBarScroll(ev)
 		return
 	}
-	active := s.mgr.Active()
-	if active == nil {
+	pane, ok := s.paneAt(x, y)
+	if !ok || pane.Session == nil {
 		return
 	}
-	padPx := dpToPx(s.contentPadDp(), s.scale)
-	s.handleScroll(active, x, y, tabBarPx, padPx, ev.DeltaY)
+	s.handleScroll(pane.Session, x, y, pane.X, pane.Y, ev.DeltaY)
 }
 
 // cellFromPosition converts a device-pixel window position into a 0-based
-// (col, row) cell, subtracting the tab bar's height and content padding.
-// Clamped to [0, cols-1] / [0, rows-1].
-func cellFromPosition(x, y, cellWidth, cellHeight, chromeHeightPx, padX, padY, cols, rows int) (col, row int) {
-	col = (x - padX) / cellWidth
-	row = (y - chromeHeightPx - padY) / cellHeight
+// (col, row) cell. originX/originY are the top-left of the pane grid in
+// device pixels. Clamped to [0, cols-1] / [0, rows-1].
+func cellFromPosition(x, y, cellWidth, cellHeight, originX, originY, cols, rows int) (col, row int) {
+	col = (x - originX) / cellWidth
+	row = (y - originY) / cellHeight
 	if row < 0 {
 		row = 0
 	}
@@ -103,7 +132,7 @@ func cellFromPosition(x, y, cellWidth, cellHeight, chromeHeightPx, padX, padY, c
 	return col, row
 }
 
-func (s *uiState) handleScroll(sess *session.Session, x, y, chromeHeightPx, padPx int, deltaY float64) {
+func (s *uiState) handleScroll(sess *session.Session, x, y, originX, originY int, deltaY float64) {
 	if s.cellW <= 0 || s.cellH <= 0 {
 		return
 	}
@@ -131,7 +160,7 @@ func (s *uiState) handleScroll(sess *session.Session, x, y, chromeHeightPx, padP
 	if lines > 0 {
 		dir = mouse.Down
 	}
-	col, row := cellFromPosition(x, y, s.cellW, s.cellH, chromeHeightPx, padPx, padPx, sz.C, sz.R)
+	col, row := cellFromPosition(x, y, s.cellW, s.cellH, originX, originY, sz.C, sz.R)
 	n := lines
 	if n < 0 {
 		n = -n
@@ -143,7 +172,7 @@ func (s *uiState) handleScroll(sess *session.Session, x, y, chromeHeightPx, padP
 	}
 }
 
-func (s *uiState) handleButton(sess *session.Session, x, y, chromeHeightPx, padPx int, buttons gpucontext.Buttons, pressed bool, mods gpucontext.Modifiers) {
+func (s *uiState) handleButton(sess *session.Session, x, y, originX, originY int, buttons gpucontext.Buttons, pressed bool, mods gpucontext.Modifiers) {
 	if s.cellW <= 0 || s.cellH <= 0 {
 		return
 	}
@@ -152,7 +181,7 @@ func (s *uiState) handleButton(sess *session.Session, x, y, chromeHeightPx, padP
 	sz := sess.Term.Size()
 	sess.Term.RUnlock()
 
-	col, row := cellFromPosition(x, y, s.cellW, s.cellH, chromeHeightPx, padPx, padPx, sz.C, sz.R)
+	col, row := cellFromPosition(x, y, s.cellW, s.cellH, originX, originY, sz.C, sz.R)
 
 	if mouse.TrackingEnabled(mode) && !mods.HasShift() {
 		if b, ok := mouse.EncodeButton(mode, mouse.ButtonLeft, pressed, col+1, row+1, 0); ok {
@@ -202,7 +231,7 @@ func (s *uiState) handleButton(sess *session.Session, x, y, chromeHeightPx, padP
 	s.app.RequestRedraw()
 }
 
-func (s *uiState) handleDrag(sess *session.Session, x, y, chromeHeightPx, padPx int) {
+func (s *uiState) handleDrag(sess *session.Session, x, y, originX, originY int) {
 	if s.cellW <= 0 || s.cellH <= 0 {
 		return
 	}
@@ -211,7 +240,7 @@ func (s *uiState) handleDrag(sess *session.Session, x, y, chromeHeightPx, padPx 
 	sz := sess.Term.Size()
 	sess.Term.RUnlock()
 
-	col, row := cellFromPosition(x, y, s.cellW, s.cellH, chromeHeightPx, padPx, padPx, sz.C, sz.R)
+	col, row := cellFromPosition(x, y, s.cellW, s.cellH, originX, originY, sz.C, sz.R)
 
 	if b, ok := mouse.EncodeMotion(mode, mouse.ButtonLeft, col+1, row+1, 0); ok {
 		_, _ = sess.Write(b)
@@ -221,8 +250,8 @@ func (s *uiState) handleDrag(sess *session.Session, x, y, chromeHeightPx, padPx 
 		return
 	}
 
-	if s.maybeSelectionEdgeScroll(sess, y, chromeHeightPx, padPx, sz.R) {
-		col, row = cellFromPosition(x, y, s.cellW, s.cellH, chromeHeightPx, padPx, padPx, sz.C, sz.R)
+	if s.maybeSelectionEdgeScroll(sess, y, originY, sz.R) {
+		col, row = cellFromPosition(x, y, s.cellW, s.cellH, originX, originY, sz.C, sz.R)
 	}
 	sess.ExtendSelection(col, sess.ViewToAbsLine(row))
 	// See handleButton's identical comment: selection changes need an
@@ -234,11 +263,11 @@ func (s *uiState) handleDrag(sess *session.Session, x, y, chromeHeightPx, padPx 
 // maybeSelectionEdgeScroll scrolls scrollback when the pointer sits in the
 // top/bottom edge zone during a selection drag. Returns true if the
 // viewport moved (caller should re-resolve the cell under the pointer).
-func (s *uiState) maybeSelectionEdgeScroll(sess *session.Session, y, chromeHeightPx, padPx, rows int) bool {
+func (s *uiState) maybeSelectionEdgeScroll(sess *session.Session, y, originY, rows int) bool {
 	if !sess.SelectionDragging() || rows <= 0 || s.cellH <= 0 {
 		return false
 	}
-	gridTop := chromeHeightPx + padPx
+	gridTop := originY
 	gridBottom := gridTop + rows*s.cellH
 	edge := selEdgeZoneCells * s.cellH
 	if edge < 1 {

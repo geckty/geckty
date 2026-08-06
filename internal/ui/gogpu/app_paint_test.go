@@ -275,7 +275,7 @@ func TestMaybeSelectionEdgeScrollTowardHistory(t *testing.T) {
 	before := active.ScrollOffset()
 	s.cellH = 12
 	s.selEdgeLast = time.Time{}
-	moved := s.maybeSelectionEdgeScroll(active, 0, 0, 0, sz.R)
+	moved := s.maybeSelectionEdgeScroll(active, 0, 0, sz.R)
 	if !moved {
 		t.Fatal("expected edge scroll near top of grid during selection drag")
 	}

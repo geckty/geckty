@@ -24,6 +24,11 @@ const (
 	ActionIncreaseFontSize Action = "increase_font_size"
 	ActionDecreaseFontSize Action = "decrease_font_size"
 	ActionResetFontSize    Action = "reset_font_size"
+	ActionSplitVertical    Action = "split_vertical"
+	ActionSplitHorizontal  Action = "split_horizontal"
+	ActionNextPane         Action = "next_pane"
+	ActionPrevPane         Action = "prev_pane"
+	ActionClosePane        Action = "close_pane"
 )
 
 var validActions = map[string]Action{
@@ -37,6 +42,11 @@ var validActions = map[string]Action{
 	string(ActionIncreaseFontSize): ActionIncreaseFontSize,
 	string(ActionDecreaseFontSize): ActionDecreaseFontSize,
 	string(ActionResetFontSize):    ActionResetFontSize,
+	string(ActionSplitVertical):    ActionSplitVertical,
+	string(ActionSplitHorizontal):  ActionSplitHorizontal,
+	string(ActionNextPane):         ActionNextPane,
+	string(ActionPrevPane):         ActionPrevPane,
+	string(ActionClosePane):        ActionClosePane,
 }
 
 // namedKeyBindings maps config-file key names to gpucontext.Key values for

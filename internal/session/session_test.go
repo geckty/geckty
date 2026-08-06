@@ -120,9 +120,8 @@ func TestManagerLifecycle(t *testing.T) {
 	s2 := newTestSession(newFakePTY(), 10, 2, nil)
 
 	m.mu.Lock()
-	m.sessions = append(m.sessions, s1, s2)
-	m.ids[s1] = 0
-	m.ids[s2] = 1
+	injectTabLocked(m, s1, 0)
+	injectTabLocked(m, s2, 1)
 	m.nextID = 2
 	m.active = 1
 	m.mu.Unlock()
@@ -153,9 +152,8 @@ func TestManagerTabsCarryIDs(t *testing.T) {
 	s2 := newTestSession(newFakePTY(), 10, 2, nil)
 
 	m.mu.Lock()
-	m.sessions = append(m.sessions, s1, s2)
-	m.ids[s1] = 0
-	m.ids[s2] = 1
+	injectTabLocked(m, s1, 0)
+	injectTabLocked(m, s2, 1)
 	m.nextID = 2
 	m.active = 0
 	m.mu.Unlock()
@@ -182,8 +180,9 @@ func TestManagerNextPrevWraps(t *testing.T) {
 	s3 := newTestSession(newFakePTY(), 10, 2, nil)
 
 	m.mu.Lock()
-	m.sessions = append(m.sessions, s1, s2, s3)
-	m.ids[s1], m.ids[s2], m.ids[s3] = 0, 1, 2
+	injectTabLocked(m, s1, 0)
+	injectTabLocked(m, s2, 1)
+	injectTabLocked(m, s3, 2)
 	m.nextID = 3
 	m.active = 0
 	m.mu.Unlock()
@@ -207,6 +206,16 @@ func TestManagerNextPrevWraps(t *testing.T) {
 	}
 }
 
+// injectTabLocked appends a single-pane tab. Caller must hold m.mu.
+func injectTabLocked(m *Manager, s *Session, id int) {
+	m.tabs = append(m.tabs, &tabEntry{
+		id:    id,
+		root:  &paneNode{Session: s},
+		focus: s,
+	})
+	m.sessTab[s] = id
+}
+
 func newThreeTabManager(t *testing.T) (m *Manager, s1, s2, s3 *Session) {
 	t.Helper()
 	m = NewManager(nil)
@@ -215,8 +224,9 @@ func newThreeTabManager(t *testing.T) (m *Manager, s1, s2, s3 *Session) {
 	s3 = newTestSession(newFakePTY(), 10, 2, nil)
 
 	m.mu.Lock()
-	m.sessions = append(m.sessions, s1, s2, s3)
-	m.ids[s1], m.ids[s2], m.ids[s3] = 0, 1, 2
+	injectTabLocked(m, s1, 0)
+	injectTabLocked(m, s2, 1)
+	injectTabLocked(m, s3, 2)
 	m.nextID = 3
 	m.active = 0
 	m.mu.Unlock()
@@ -348,8 +358,8 @@ func TestManagerCloseActive(t *testing.T) {
 	s2 := newTestSession(newFakePTY(), 10, 2, nil)
 
 	m.mu.Lock()
-	m.sessions = append(m.sessions, s1, s2)
-	m.ids[s1], m.ids[s2] = 0, 1
+	injectTabLocked(m, s1, 0)
+	injectTabLocked(m, s2, 1)
 	m.nextID = 2
 	m.active = 1
 	m.mu.Unlock()
@@ -362,6 +372,57 @@ func TestManagerCloseActive(t *testing.T) {
 	}
 	if m.Active() != s1 {
 		t.Fatal("expected s1 to remain")
+	}
+}
+
+func TestManagerSplitAndClosePane(t *testing.T) {
+	m := NewManager(nil)
+	s1 := newTestSession(newFakePTY(), 10, 2, nil)
+	m.mu.Lock()
+	injectTabLocked(m, s1, 0)
+	m.nextID = 1
+	m.active = 0
+	m.mu.Unlock()
+
+	s2 := newTestSession(newFakePTY(), 10, 2, nil)
+	m.SetSpawn(func(cols, rows int) (*Session, error) {
+		return s2, nil
+	})
+
+	if !m.Split(SplitVertical, 5, 2) {
+		t.Fatal("Split should succeed")
+	}
+	if got := len(m.AllSessions()); got != 2 {
+		t.Fatalf("AllSessions = %d, want 2", got)
+	}
+	if m.Active() != s2 {
+		t.Fatal("Split should focus the new pane")
+	}
+	leaves, focus, ok := m.ActiveLayout(0, 0, 100, 40)
+	if !ok || len(leaves) != 2 || focus != s2 {
+		t.Fatalf("ActiveLayout leaves=%d focus=%v ok=%v", len(leaves), focus, ok)
+	}
+
+	m.NextPane()
+	if m.Active() != s1 {
+		t.Fatal("NextPane should cycle to s1")
+	}
+	m.PrevPane()
+	if m.Active() != s2 {
+		t.Fatal("PrevPane should cycle back to s2")
+	}
+
+	if err := m.CloseSession(s2); err != nil {
+		t.Fatalf("CloseSession: %v", err)
+	}
+	if got := len(m.AllSessions()); got != 1 {
+		t.Fatalf("after CloseSession AllSessions = %d, want 1", got)
+	}
+	if m.Active() != s1 {
+		t.Fatal("expected focus to fall back to s1")
+	}
+	if len(m.Tabs()) != 1 {
+		t.Fatal("tab should remain after closing one pane")
 	}
 }
 

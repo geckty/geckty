@@ -30,15 +30,15 @@ func TestToDevicePx(t *testing.T) {
 }
 
 func TestCellFromPosition(t *testing.T) {
-	col, row := cellFromPosition(23, 65, 10, 20, 40, 3, 5, 80, 24)
+	col, row := cellFromPosition(23, 65, 10, 20, 3, 45, 80, 24)
 	if col != 2 || row != 1 {
 		t.Fatalf("cellFromPosition = %d,%d, want 2,1", col, row)
 	}
-	col, row = cellFromPosition(0, 0, 10, 20, 40, 5, 5, 80, 24)
+	col, row = cellFromPosition(0, 0, 10, 20, 40, 5, 80, 24)
 	if col != 0 || row != 0 {
 		t.Fatalf("cellFromPosition clamps negative = %d,%d, want 0,0", col, row)
 	}
-	col, row = cellFromPosition(100000, 100000, 10, 20, 40, 5, 5, 80, 24)
+	col, row = cellFromPosition(100000, 100000, 10, 20, 40, 5, 80, 24)
 	if col != 79 || row != 23 {
 		t.Fatalf("cellFromPosition clamps to last cell = %d,%d, want 79,23", col, row)
 	}

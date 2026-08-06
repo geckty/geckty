@@ -7,6 +7,7 @@ import (
 	"github.com/gogpu/gpucontext"
 
 	"github.com/geckty/geckty/internal/config"
+	"github.com/geckty/geckty/internal/session"
 )
 
 func testUIStateWithTab(t *testing.T) (*uiState, *fakeApp) {
@@ -16,8 +17,30 @@ func testUIStateWithTab(t *testing.T) (*uiState, *fakeApp) {
 	if err := s.wireFirstTab(app); err != nil {
 		t.Fatalf("wireFirstTab: %v", err)
 	}
+	s.seedTestPaneLayout()
 	t.Cleanup(func() { _ = s.mgr.CloseActive() })
 	return s, app
+}
+
+// seedTestPaneLayout fills activePaneRects so pointer hit-tests work
+// without running a full paintFrame (tests never call onDraw).
+func (s *uiState) seedTestPaneLayout() {
+	active := s.mgr.Active()
+	if active == nil {
+		return
+	}
+	tabH := s.tabBarHeightPx()
+	if tabH < 1 {
+		tabH = 28
+	}
+	s.contentOX, s.contentOY = 0, tabH
+	s.contentW, s.contentH = s.frameW, 600
+	if s.contentW < 1 {
+		s.contentW = 800
+	}
+	s.activePaneRects = []session.PaneRect{{
+		Session: active, X: s.contentOX, Y: s.contentOY, W: s.contentW, H: s.contentH,
+	}}
 }
 
 func TestDispatchActionNewTab(t *testing.T) {
