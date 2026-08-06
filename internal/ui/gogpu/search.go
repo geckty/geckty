@@ -2,7 +2,6 @@ package gogpu
 
 import (
 	"fmt"
-	"image/color"
 	"time"
 	"unicode/utf8"
 
@@ -170,7 +169,7 @@ func (s *uiState) paintSearchOverlay(fw, fh, padPx, tabBarH int) {
 	if y0 < 0 {
 		y0 = 0
 	}
-	bg := color.RGBA{R: 0x2a, G: 0x2c, B: 0x30, A: 0xff}
+	bg := toRGBA(s.palette.InactiveTabBG)
 	fillRect(s.frame, fw, 0, y0, fw, fh, bg)
 
 	label := "Find: " + s.search.query + "▋"
@@ -207,6 +206,6 @@ func (s *uiState) paintSearchOverlay(fw, fh, padPx, tabBarH int) {
 	x0 := ox + s.search.hit.Col*s.cellW
 	yHit := oy + viewRow*s.cellH
 	x1 := x0 + s.search.hit.Len*s.cellW
-	hi := color.RGBA{R: 0xea, G: 0xec, B: 0x23, A: 0x90}
+	hi := withAlpha(toRGBA(s.palette.ANSI[11]), 0x90)
 	blendRect(s.frame, fw, x0, yHit, x1, yHit+s.cellH, hi)
 }

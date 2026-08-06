@@ -354,7 +354,7 @@ func (p *Painter) paintRow(buf []byte, frameW, frameH int, line emu.Line, cols, 
 		} else if g.Hyperlink != "" {
 			// OSC 8 hyperlinks get a subtle underline so they're visible
 			// without requiring hover chrome.
-			linkUL := color.RGBA{R: 0x58, G: 0x33, B: 0xff, A: 0xff}
+			linkUL := toRGBA(p.Palette.ANSI[12])
 			paintUnderline(buf, frameW, x0, x1, y1, emu.UnderlineSingle, linkUL)
 		}
 		if st.strikethrough {
@@ -482,4 +482,9 @@ func cellSpan(pl Placement, pixelSize image.Point, cellWidth, cellHeight int) (c
 
 func toRGBA(c color.NRGBA) color.RGBA {
 	return color.RGBA(c)
+}
+
+func withAlpha(c color.RGBA, a uint8) color.RGBA {
+	c.A = a
+	return c
 }

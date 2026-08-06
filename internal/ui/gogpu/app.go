@@ -1003,7 +1003,7 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 	if ok {
 		if len(leaves) > 1 {
 			// Divider color fills the content area; each leaf paints over it.
-			fillRect(s.frame, fw, ox, oy, ox+cw, oy+ch, color.RGBA{R: 0x3a, G: 0x3c, B: 0x40, A: 0xff})
+			fillRect(s.frame, fw, ox, oy, ox+cw, oy+ch, toRGBA(s.palette.HoverTabBG))
 		}
 		for _, leaf := range leaves {
 			if leaf.Session == nil {
@@ -1017,7 +1017,7 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 			if leaf.Session == focus {
 				s.paintScrollBarOverlay(fw, fh, leaf.Y, leaf.Session, time.Now().Before(s.scrollBarUntil))
 				if len(leaves) > 1 {
-					ring := color.RGBA{R: 0x58, G: 0x33, B: 0xff, A: 0xaa}
+					ring := withAlpha(toRGBA(s.palette.ANSI[12]), 0xaa)
 					const t = 2
 					blendRect(s.frame, fw, leaf.X, leaf.Y, leaf.X+leaf.W, leaf.Y+t, ring)
 					blendRect(s.frame, fw, leaf.X, leaf.Y+leaf.H-t, leaf.X+leaf.W, leaf.Y+leaf.H, ring)
@@ -1093,7 +1093,7 @@ func (s *uiState) paintConfirmCloseOverlay(fw, fh, padPx int) {
 	if y0 < 0 {
 		y0 = 0
 	}
-	bg := color.RGBA{R: 0x2a, G: 0x2c, B: 0x30, A: 0xf0}
+	bg := withAlpha(toRGBA(s.palette.InactiveTabBG), 0xf0)
 	blendRect(s.frame, fw, padPx, y0, fw-padPx, y0+barH, bg)
 	if s.tabBar != nil {
 		s.tabBar.drawText(s.frame, fw, fh, msg, padPx*2, y0, fw-4*padPx, barH, toRGBA(s.palette.Foreground))

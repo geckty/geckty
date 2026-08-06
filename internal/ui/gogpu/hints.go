@@ -1,8 +1,6 @@
 package gogpu
 
 import (
-	"image/color"
-
 	"github.com/gogpu/gpucontext"
 )
 
@@ -92,8 +90,8 @@ func (s *uiState) paintHintsOverlay(fw, fh int) {
 	if pane, ok := s.paneForSession(active); ok {
 		ox, oy = pane.X, pane.Y
 	}
-	fg := color.RGBA{R: 0x1a, G: 0x1a, B: 0x1a, A: 0xff}
-	bg := color.RGBA{R: 0xea, G: 0xec, B: 0x23, A: 0xff}
+	fg := toRGBA(s.palette.Background)
+	bg := toRGBA(s.palette.ANSI[11])
 	for i, hit := range s.hints {
 		if hit.AbsLine < top || hit.AbsLine >= top+rows {
 			continue
