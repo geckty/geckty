@@ -34,6 +34,7 @@ import (
 	"github.com/geckty/geckty/internal/session"
 	"github.com/geckty/geckty/internal/ui/chrome"
 	"github.com/geckty/geckty/internal/ui/theme"
+	"github.com/geckty/geckty/internal/vt/emu"
 )
 
 // pluginStatusInterval is how often loaded plugins' draw_statusbar hook is
@@ -88,6 +89,7 @@ type uiState struct {
 	hoverTabIdx    int
 	hoverPlus      bool
 	scrollBarUntil time.Time
+	selEdgeLast    time.Time // last edge auto-scroll tick while dragging a selection
 
 	scrollAccumPx float64
 
@@ -519,6 +521,9 @@ func (s *uiState) handleKeyPress(key gpucontext.Key, mods gpucontext.Modifiers) 
 		s.setKeyEcho(keyToChar[key])
 		return
 	}
+	if s.tryScrollbackKey(key, mods) {
+		return
+	}
 	active := s.mgr.Active()
 	if active == nil {
 		return
@@ -535,6 +540,43 @@ func (s *uiState) handleKeyPress(key gpucontext.Key, mods gpucontext.Modifiers) 
 		_, _ = active.Write(b)
 		s.setKeyEcho(string(b))
 	}
+}
+
+// tryScrollbackKey handles Shift+PageUp/PageDown (and plain PageUp/Down
+// once already scrolled into history) as local scrollback navigation.
+// Full-screen alt-buffer apps keep receiving PageUp/Down as CSI.
+func (s *uiState) tryScrollbackKey(key gpucontext.Key, mods gpucontext.Modifiers) bool {
+	if key != gpucontext.KeyPageUp && key != gpucontext.KeyPageDown {
+		return false
+	}
+	active := s.mgr.Active()
+	if active == nil {
+		return false
+	}
+	active.Term.RLock()
+	mode := active.Term.Mode()
+	rows := active.Term.Size().R
+	active.Term.RUnlock()
+	if mode&emu.ModeAltScreen != 0 {
+		return false
+	}
+	shift := mods.HasShift()
+	scrolled := active.ScrollOffset() > 0
+	if !shift && !scrolled {
+		return false
+	}
+	page := rows - 1
+	if page < 1 {
+		page = 1
+	}
+	delta := page
+	if key == gpucontext.KeyPageDown {
+		delta = -page
+	}
+	active.ScrollBy(delta)
+	s.scrollBarUntil = time.Now().Add(1200 * time.Millisecond)
+	s.app.RequestRedraw()
+	return true
 }
 
 func (s *uiState) handleKeyRelease(key gpucontext.Key, mods gpucontext.Modifiers) {
@@ -887,16 +929,40 @@ func (s *uiState) paintScrollBarOverlay(fw, fh, originY int, active *session.Ses
 	fillRoundRect(s.frame, fw, x0, thumbY, x1, thumbY+thumbH, (x1-x0)/2, color32(0xff, 0xff, 0xff, 0x70))
 }
 
-// gridSelection converts sess's current selection (if any) into the
-// Selection shape Painter.Paint expects.
+// gridSelection converts sess's absolute History()+Screen() selection
+// into viewport cell rows for Painter.Paint. Returns inactive when the
+// selection is fully scrolled off-screen (session selection is unchanged).
 func gridSelection(sess *session.Session) Selection {
 	start, end, ok := sess.Selection()
 	if !ok {
 		return Selection{}
 	}
+	top := sess.ViewportTopAbsLine()
+	sess.Term.RLock()
+	cols := sess.Term.Size().C
+	rows := sess.Term.Size().R
+	sess.Term.RUnlock()
+	if rows <= 0 || cols <= 0 {
+		return Selection{}
+	}
+	bottom := top + rows - 1
+	if end.AbsLine < top || start.AbsLine > bottom {
+		return Selection{}
+	}
+
+	viewStart := start
+	viewEnd := end
+	if viewStart.AbsLine < top {
+		viewStart.AbsLine = top
+		viewStart.Col = 0
+	}
+	if viewEnd.AbsLine > bottom {
+		viewEnd.AbsLine = bottom
+		viewEnd.Col = cols - 1
+	}
 	sel := Selection{Active: true}
-	sel.Start.Col, sel.Start.Row = start.Col, start.Row
-	sel.End.Col, sel.End.Row = end.Col, end.Row
+	sel.Start.Col, sel.Start.Row = viewStart.Col, viewStart.AbsLine-top
+	sel.End.Col, sel.End.Row = viewEnd.Col, viewEnd.AbsLine-top
 	return sel
 }
 

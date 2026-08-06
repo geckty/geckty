@@ -11,9 +11,10 @@ import (
 	"github.com/geckty/geckty/internal/vt/emu"
 )
 
-// Selection describes a text selection to highlight, in live-screen cell
-// coordinates (row/col, not scrollback-adjusted). Bounds are inclusive and
-// assumed already normalized (Start at-or-before End in reading order).
+// Selection describes a text selection to highlight in viewport cell
+// coordinates (row 0 = top visible row). Bounds are inclusive and assumed
+// already normalized (Start at-or-before End in reading order). Callers
+// convert absolute History()+Screen() selection bounds via gridSelection.
 type Selection struct {
 	Active     bool
 	Start, End struct{ Col, Row int }
@@ -106,7 +107,10 @@ func (p *Painter) Paint(buf []byte, frameW, frameH, originX, originY int, term *
 	gridH := sz.R * p.CellHeight
 	fillRect(buf, frameW, originX, originY, originX+gridW, originY+gridH, toRGBA(p.Palette.Background))
 
-	if scrollOffset == 0 && sel.Active {
+	// Selection is in live viewport cell rows (gridSelection already
+	// clipped absolute History()+Screen() bounds to the visible window),
+	// so it paints whether or not we're scrolled into history.
+	if sel.Active {
 		p.paintSelection(buf, frameW, sel, sz.C, originX, originY)
 	}
 
@@ -116,7 +120,7 @@ func (p *Painter) Paint(buf []byte, frameW, frameH, originX, originY int, term *
 		if y >= originY+gridH || y >= frameH {
 			break
 		}
-		p.paintRow(buf, frameW, frameH, line, sz.C, originX, y)
+		p.paintRow(buf, frameW, frameH, line, sz.C, originX, y, sel, row)
 	}
 
 	p.paintPlacements(buf, frameW, frameH, placements, top, sz.R, originX, originY, gridW)
@@ -221,8 +225,9 @@ const glyphBleedPx = 3
 // paintRow paints each cell at its fixed grid X, rasterizing bold/italic
 // cells from Fonts' dedicated bold/italic/boldItalic faces when the config
 // enabled them (see ensureFonts) and Fonts actually has one — otherwise
-// faceAndAtlas falls back to the regular face/atlas.
-func (p *Painter) paintRow(buf []byte, frameW, frameH int, line emu.Line, cols, originX, y int) {
+// faceAndAtlas falls back to the regular face/atlas. When sel covers a
+// cell, glyphs use Palette.SelectionFG instead of the cell's foreground.
+func (p *Painter) paintRow(buf []byte, frameW, frameH int, line emu.Line, cols, originX, y int, sel Selection, viewRow int) {
 	y1 := y + p.CellHeight
 	for col := 0; col < cols; {
 		var g emu.Glyph
@@ -246,6 +251,11 @@ func (p *Painter) paintRow(buf []byte, frameW, frameH int, line emu.Line, cols, 
 		bgColor := toRGBA(p.Palette.Resolve(st.bg))
 		if st.dim {
 			fgColor = dimRGBA(fgColor, bgColor)
+		}
+		if sel.Active {
+			if colStart, colEnd, ok := selectionColRange(sel, viewRow, cols); ok && col >= colStart && col < colEnd {
+				fgColor = toRGBA(p.Palette.SelectionFG)
+			}
 		}
 
 		if bgColor != toRGBA(p.Palette.Background) {

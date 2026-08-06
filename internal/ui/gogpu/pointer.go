@@ -14,6 +14,12 @@ import (
 const (
 	dragAutoScrollEdgeZoneDp = 40 // pointer proximity to strip edge that triggers auto-scroll during a tab drag
 	dragAutoScrollStepDp     = 8  // strip scroll distance per drag-move event once inside the edge zone
+
+	// Selection drag near the top/bottom of the grid scrolls scrollback so
+	// the selection can extend past the visible viewport (Kitty-style).
+	selEdgeZoneCells       = 1
+	selEdgeScrollInterval  = 50 * time.Millisecond
+	selEdgeScrollLines     = 1
 )
 
 // handlePointerEvent routes pointer events to the tab bar or the grid:
@@ -159,10 +165,18 @@ func (s *uiState) handleButton(sess *session.Session, x, y, chromeHeightPx, padP
 		return
 	}
 	if pressed {
-		if sess.RegisterClick(col, row) {
-			sess.SelectWord(col, row, s.cfg.Selection.WordChars)
-		} else {
-			sess.StartSelection(col, row)
+		absLine := sess.ViewToAbsLine(row)
+		wordChars := ""
+		if s.cfg != nil {
+			wordChars = s.cfg.Selection.WordChars
+		}
+		switch sess.RegisterClick(col, absLine) {
+		case 2:
+			sess.SelectWord(col, absLine, wordChars)
+		case 3:
+			sess.SelectLine(absLine)
+		default:
+			sess.StartSelection(col, absLine)
 		}
 	} else {
 		sess.EndSelection()
@@ -195,13 +209,54 @@ func (s *uiState) handleDrag(sess *session.Session, x, y, chromeHeightPx, padPx 
 		_, _ = sess.Write(b)
 		return
 	}
-	if !mouse.TrackingEnabled(mode) {
-		sess.ExtendSelection(col, row)
-		// See handleButton's identical comment: selection changes need an
-		// explicit redraw or they lag behind the pointer until some
-		// unrelated frame happens to repaint.
-		s.app.RequestRedraw()
+	if mouse.TrackingEnabled(mode) {
+		return
 	}
+
+	if s.maybeSelectionEdgeScroll(sess, y, chromeHeightPx, padPx, sz.R) {
+		col, row = cellFromPosition(x, y, s.cellW, s.cellH, chromeHeightPx, padPx, padPx, sz.C, sz.R)
+	}
+	sess.ExtendSelection(col, sess.ViewToAbsLine(row))
+	// See handleButton's identical comment: selection changes need an
+	// explicit redraw or they lag behind the pointer until some
+	// unrelated frame happens to repaint.
+	s.app.RequestRedraw()
+}
+
+// maybeSelectionEdgeScroll scrolls scrollback when the pointer sits in the
+// top/bottom edge zone during a selection drag. Returns true if the
+// viewport moved (caller should re-resolve the cell under the pointer).
+func (s *uiState) maybeSelectionEdgeScroll(sess *session.Session, y, chromeHeightPx, padPx, rows int) bool {
+	if !sess.SelectionDragging() || rows <= 0 || s.cellH <= 0 {
+		return false
+	}
+	gridTop := chromeHeightPx + padPx
+	gridBottom := gridTop + rows*s.cellH
+	edge := selEdgeZoneCells * s.cellH
+	if edge < 1 {
+		edge = 1
+	}
+	now := time.Now()
+	if now.Sub(s.selEdgeLast) < selEdgeScrollInterval {
+		return false
+	}
+	delta := 0
+	switch {
+	case y < gridTop+edge:
+		delta = selEdgeScrollLines // toward older history
+	case y > gridBottom-edge:
+		delta = -selEdgeScrollLines // toward live bottom
+	default:
+		return false
+	}
+	before := sess.ScrollOffset()
+	after := sess.ScrollBy(delta)
+	if after == before {
+		return false
+	}
+	s.selEdgeLast = now
+	s.scrollBarUntil = now.Add(1200 * time.Millisecond)
+	return true
 }
 
 // handleTabBarPointer handles a pointer event for the tab strip — select,

@@ -61,8 +61,11 @@ type Session struct {
 	selMu       sync.Mutex
 	sel         selectionState
 	lastClick   clickRecord // guarded by selMu; see RegisterClick
-	osc52       *osc52Bridge
-	gfx         *graphics
+	// selHistOffset tracks Term.HistoryOffset() so prune deltas can shift
+	// selection AbsLines (see syncSelectionHistoryOffset).
+	selHistOffset int
+	osc52         *osc52Bridge
+	gfx           *graphics
 }
 
 // New spawns a shell per cfg and wires its PTY output into a VT terminal of
@@ -153,12 +156,14 @@ func (s *Session) Run() {
 			// live view whenever alt screen engages. The same
 			// applies to Kitty-graphics placements from the main
 			// screen.
+			s.syncSelectionHistoryOffset()
 			s.Term.RLock()
 			altScreen := s.Term.Mode()&emu.ModeAltScreen != 0
 			s.Term.RUnlock()
 			if altScreen {
 				s.ResetScroll()
 				s.clearPlacements()
+				s.ClearSelection()
 			}
 			if s.onDirty != nil {
 				s.onDirty()

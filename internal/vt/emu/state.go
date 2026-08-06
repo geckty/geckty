@@ -978,6 +978,19 @@ func (t *State) History() []Line {
 	return t.history
 }
 
+// HistoryOffset returns how many lines have been pruned from the front of
+// the active scrollback (main or alt). Absolute line IDs for content still
+// in History()/Screen() are historyOffset+index; when Offset grows, callers
+// that cached those indices as local buffer offsets must subtract the delta.
+func (t *State) HistoryOffset() int {
+	t.RLock()
+	defer t.RUnlock()
+	if IsAltMode(t.mode) {
+		return t.altHistoryOffset
+	}
+	return t.historyOffset
+}
+
 func (t *State) IsAltMode() bool {
 	return IsAltMode(t.mode)
 }

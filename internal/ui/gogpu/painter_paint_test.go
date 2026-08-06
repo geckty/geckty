@@ -144,13 +144,24 @@ func TestPainterPaintCursorStyles(t *testing.T) {
 	}
 }
 
-func TestPainterPaintScrollOffsetSkipsCursorAndSelection(t *testing.T) {
+func TestPainterPaintScrollOffsetSkipsCursorButPaintsSelection(t *testing.T) {
 	p := testPainter()
 	term := vt.New(10, 2, io.Discard, nil, 0)
+	_, _ = term.Write([]byte("abcdefghij"))
 	buf := newBuf(100, 60)
-	// scrollOffset != 0 must skip cursor/selection painting without error.
-	if !p.Paint(buf, 100, 60, 0, 0, term, 1, Selection{Active: true}, nil, true) {
+	sel := Selection{Active: true}
+	sel.Start.Col, sel.Start.Row = 2, 0
+	sel.End.Col, sel.End.Row = 4, 0
+	// scrollOffset != 0 must skip the cursor but still paint selection.
+	if !p.Paint(buf, 100, 60, 0, 0, term, 1, sel, nil, true) {
 		t.Fatal("Paint should still return true with a nonzero scrollOffset")
+	}
+	x := 3*p.CellWidth + 1
+	y := 1
+	got := pixelAt(buf, 100, x, y)
+	bg := toRGBA(p.Palette.Background)
+	if got == bg {
+		t.Fatalf("pixel inside selection with scrollOffset!=0 = %v, want selection highlight", got)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"testing"
+	"time"
 
 	"github.com/geckty/geckty/internal/vt/emu"
 )
@@ -239,6 +240,47 @@ func TestGridSelection(t *testing.T) {
 	sel := gridSelection(active)
 	if !sel.Active {
 		t.Fatal("gridSelection should report Active once a selection exists")
+	}
+	if sel.Start.Col != 1 || sel.End.Col != 3 || sel.Start.Row != 0 || sel.End.Row != 0 {
+		t.Fatalf("gridSelection = %+v, want cols 1-3 on view row 0", sel)
+	}
+}
+
+func TestGridSelectionMapsAbsLineThroughScroll(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	// Fake history by selecting AbsLine that will sit at view row 1 when
+	// ViewportTopAbsLine is 0 (empty history, live view): AbsLine 1 → row 1.
+	active.StartSelection(0, 1)
+	active.ExtendSelection(2, 1)
+	active.EndSelection()
+	sel := gridSelection(active)
+	if !sel.Active || sel.Start.Row != 1 || sel.End.Row != 1 {
+		t.Fatalf("gridSelection = %+v, want view row 1", sel)
+	}
+}
+
+func TestMaybeSelectionEdgeScrollTowardHistory(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	sz := active.Term.Size()
+	for i := 0; i < sz.R+5; i++ {
+		active.Term.Parse([]byte("line\r\n"))
+	}
+	if len(active.Term.History()) == 0 {
+		t.Fatal("expected history after overflowing the screen")
+	}
+	active.StartSelection(0, active.ViewToAbsLine(0))
+	active.ExtendSelection(0, active.ViewToAbsLine(0))
+	before := active.ScrollOffset()
+	s.cellH = 12
+	s.selEdgeLast = time.Time{}
+	moved := s.maybeSelectionEdgeScroll(active, 0, 0, 0, sz.R)
+	if !moved {
+		t.Fatal("expected edge scroll near top of grid during selection drag")
+	}
+	if active.ScrollOffset() <= before {
+		t.Fatalf("ScrollOffset = %d, want > %d after edge scroll into history", active.ScrollOffset(), before)
 	}
 }
 

@@ -156,3 +156,19 @@ func (t *Terminal) RLock() { t.mu.RLock() }
 
 // RUnlock ends a read pass started by RLock.
 func (t *Terminal) RUnlock() { t.mu.RUnlock() }
+
+// historyOffsetSource is satisfied by *emu.State — HistoryOffset isn't on
+// emu.Terminal/View, so it's reached the same way Changes() is.
+type historyOffsetSource interface {
+	HistoryOffset() int
+}
+
+// HistoryOffset returns how many scrollback lines have been pruned from the
+// front of the active history buffer (0 if the concrete emu has no offset).
+// Call within RLock/RUnlock when combining with History()/Screen().
+func (t *Terminal) HistoryOffset() int {
+	if src, ok := t.Terminal.(historyOffsetSource); ok {
+		return src.HistoryOffset()
+	}
+	return 0
+}
