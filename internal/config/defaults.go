@@ -73,6 +73,9 @@ func defaultKeybindings() []Keybinding {
 			{Key: "C", Mods: []string{"cmd"}, Action: "copy"},
 			{Key: "V", Mods: []string{"cmd"}, Action: "paste"},
 			{Key: "F", Mods: []string{"cmd", "shift"}, Action: "search_scrollback"},
+			{Key: "=", Mods: []string{"cmd"}, Action: "increase_font_size"},
+			{Key: "-", Mods: []string{"cmd"}, Action: "decrease_font_size"},
+			{Key: "0", Mods: []string{"cmd"}, Action: "reset_font_size"},
 		}
 	}
 	return []Keybinding{
@@ -83,5 +86,8 @@ func defaultKeybindings() []Keybinding {
 		{Key: "C", Mods: []string{"ctrl", "shift"}, Action: "copy"},
 		{Key: "V", Mods: []string{"ctrl", "shift"}, Action: "paste"},
 		{Key: "F", Mods: []string{"ctrl", "shift"}, Action: "search_scrollback"},
+		{Key: "=", Mods: []string{"ctrl"}, Action: "increase_font_size"},
+		{Key: "-", Mods: []string{"ctrl"}, Action: "decrease_font_size"},
+		{Key: "0", Mods: []string{"ctrl"}, Action: "reset_font_size"},
 	}
 }

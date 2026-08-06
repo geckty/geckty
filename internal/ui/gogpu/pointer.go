@@ -49,9 +49,9 @@ func (s *uiState) handlePointerEvent(ev gpucontext.PointerEvent) {
 	padPx := dpToPx(s.contentPadDp(), s.scale)
 	switch ev.Type {
 	case gpucontext.PointerDown:
-		s.handleButton(active, x, y, tabBarPx, padPx, ev.Buttons, true)
+		s.handleButton(active, x, y, tabBarPx, padPx, ev.Buttons, true, ev.Modifiers)
 	case gpucontext.PointerUp:
-		s.handleButton(active, x, y, tabBarPx, padPx, ev.Buttons, false)
+		s.handleButton(active, x, y, tabBarPx, padPx, ev.Buttons, false, ev.Modifiers)
 	case gpucontext.PointerMove:
 		if ev.Buttons.HasLeft() {
 			s.handleDrag(active, x, y, tabBarPx, padPx)
@@ -143,7 +143,7 @@ func (s *uiState) handleScroll(sess *session.Session, x, y, chromeHeightPx, padP
 	}
 }
 
-func (s *uiState) handleButton(sess *session.Session, x, y, chromeHeightPx, padPx int, buttons gpucontext.Buttons, pressed bool) {
+func (s *uiState) handleButton(sess *session.Session, x, y, chromeHeightPx, padPx int, buttons gpucontext.Buttons, pressed bool, mods gpucontext.Modifiers) {
 	if s.cellW <= 0 || s.cellH <= 0 {
 		return
 	}
@@ -154,7 +154,7 @@ func (s *uiState) handleButton(sess *session.Session, x, y, chromeHeightPx, padP
 
 	col, row := cellFromPosition(x, y, s.cellW, s.cellH, chromeHeightPx, padPx, padPx, sz.C, sz.R)
 
-	if mouse.TrackingEnabled(mode) {
+	if mouse.TrackingEnabled(mode) && !mods.HasShift() {
 		if b, ok := mouse.EncodeButton(mode, mouse.ButtonLeft, pressed, col+1, row+1, 0); ok {
 			_, _ = sess.Write(b)
 		}
@@ -166,6 +166,14 @@ func (s *uiState) handleButton(sess *session.Session, x, y, chromeHeightPx, padP
 	}
 	if pressed {
 		absLine := sess.ViewToAbsLine(row)
+		// Cmd/Ctrl+click opens a URL under the pointer (Kitty-style open_url).
+		if mods.HasSuper() || mods.HasControl() {
+			if u, ok := sess.URLAt(absLine, col); ok {
+				openURL(u)
+				s.app.RequestRedraw()
+				return
+			}
+		}
 		wordChars := ""
 		if s.cfg != nil {
 			wordChars = s.cfg.Selection.WordChars

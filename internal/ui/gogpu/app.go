@@ -81,6 +81,7 @@ type uiState struct {
 	// changes (also covers the tab bar's own smaller font).
 	scale             float64
 	fontSizeCurrent   float64
+	fontZoomDelta     float64 // runtime pt offset from cfg.Font.Size (Cmd/Ctrl+/-)
 	cellW, cellH, asc int
 
 	// Tab-bar interaction state.
@@ -660,7 +661,42 @@ func (s *uiState) dispatchAction(action Action) {
 		} else {
 			s.openSearch()
 		}
+	case ActionIncreaseFontSize:
+		s.adjustFontZoom(1)
+	case ActionDecreaseFontSize:
+		s.adjustFontZoom(-1)
+	case ActionResetFontSize:
+		s.adjustFontZoom(0)
 	}
+}
+
+const (
+	fontZoomMinPt = 6.0
+	fontZoomMaxPt = 72.0
+)
+
+// adjustFontZoom changes the live font size by deltaPt (0 resets to the
+// configured size). Forces ensureFonts to rebuild on the next frame and
+// re-measures the grid so the PTY learns the new cols/rows.
+func (s *uiState) adjustFontZoom(deltaPt float64) {
+	base := float64(s.cfg.Font.Size)
+	if base <= 0 {
+		base = 13
+	}
+	if deltaPt == 0 {
+		s.fontZoomDelta = 0
+	} else {
+		next := base + s.fontZoomDelta + deltaPt
+		if next < fontZoomMinPt {
+			next = fontZoomMinPt
+		}
+		if next > fontZoomMaxPt {
+			next = fontZoomMaxPt
+		}
+		s.fontZoomDelta = next - base
+	}
+	s.fontSizeCurrent = 0 // bust ensureFonts cache
+	s.app.RequestRedraw()
 }
 
 // onDraw is the gogpu FrameEvent equivalent: measure fonts/cell metrics,
@@ -868,14 +904,21 @@ func (s *uiState) contentPadDp() int {
 // ensureFonts (re)loads the grid + tab-bar font faces when the scale
 // factor or configured font size changes.
 func (s *uiState) ensureFonts(scale float64) {
-	size := s.cfg.Font.Size
+	size := float64(s.cfg.Font.Size)
 	if size <= 0 {
 		size = 13
 	}
-	if s.painter.Fonts.regular != nil && s.fontSizeCurrent == float64(size) && s.scale == scale {
+	size += s.fontZoomDelta
+	if size < fontZoomMinPt {
+		size = fontZoomMinPt
+	}
+	if size > fontZoomMaxPt {
+		size = fontZoomMaxPt
+	}
+	if s.painter.Fonts.regular != nil && s.fontSizeCurrent == size && s.scale == scale {
 		return
 	}
-	b := loadFontBundle(s.cfg.Font.Family, float64(size), scale, roleMono)
+	b := loadFontBundle(s.cfg.Font.Family, size, scale, roleMono)
 	if !s.cfg.Font.Bold {
 		b.bold, b.boldItalic = nil, nil
 	}
@@ -897,7 +940,7 @@ func (s *uiState) ensureFonts(scale float64) {
 	s.tabBar.Ascent = tb.ascent
 	s.tabBar.Scale = scale
 
-	s.fontSizeCurrent = float64(size)
+	s.fontSizeCurrent = size
 	s.scale = scale
 }
 

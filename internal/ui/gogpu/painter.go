@@ -189,14 +189,15 @@ func viewport(term *vt.Terminal, rows, scrollOffset int) (lines []emu.Line, top 
 }
 
 type cellStyle struct {
-	fg, bg        emu.Color
-	bold          bool
-	italic        bool
-	underline     bool
-	underlineMode emu.UnderlineMode
-	strikethrough bool
-	dim           bool
-	invisible     bool
+	fg, bg          emu.Color
+	bold            bool
+	italic          bool
+	underline       bool
+	underlineMode   emu.UnderlineMode
+	underlineColor  emu.Color
+	strikethrough   bool
+	dim             bool
+	invisible       bool
 }
 
 func styleOf(g emu.Glyph) cellStyle {
@@ -205,15 +206,16 @@ func styleOf(g emu.Glyph) cellStyle {
 		fg, bg = bg, fg
 	}
 	return cellStyle{
-		fg:            fg,
-		bg:            bg,
-		bold:          g.Mode&emu.AttrBold != 0,
-		italic:        g.Mode&emu.AttrItalic != 0,
-		underline:     g.Underline.Mode != emu.UnderlineNone,
-		underlineMode: g.Underline.Mode,
-		strikethrough: g.Mode&emu.AttrStrikethrough != 0,
-		dim:           g.Mode&emu.AttrDim != 0,
-		invisible:     g.Mode&emu.AttrInvisible != 0,
+		fg:             fg,
+		bg:             bg,
+		bold:           g.Mode&emu.AttrBold != 0,
+		italic:         g.Mode&emu.AttrItalic != 0,
+		underline:      g.Underline.Mode != emu.UnderlineNone,
+		underlineMode:  g.Underline.Mode,
+		underlineColor: g.Underline.Color,
+		strikethrough:  g.Mode&emu.AttrStrikethrough != 0,
+		dim:            g.Mode&emu.AttrDim != 0,
+		invisible:      g.Mode&emu.AttrInvisible != 0,
 	}
 }
 
@@ -272,7 +274,11 @@ func (p *Painter) paintRow(buf []byte, frameW, frameH int, line emu.Line, cols, 
 		}
 
 		if st.underline {
-			paintUnderline(buf, frameW, x0, x1, y1, st.underlineMode, fgColor)
+			ul := fgColor
+			if !st.underlineColor.Default() {
+				ul = toRGBA(p.Palette.Resolve(st.underlineColor))
+			}
+			paintUnderline(buf, frameW, x0, x1, y1, st.underlineMode, ul)
 		}
 		if st.strikethrough {
 			sy := y + p.CellHeight/2
@@ -316,8 +322,26 @@ func paintUnderline(buf []byte, frameW, x0, x1, y1 int, mode emu.UnderlineMode, 
 			fillRect(buf, frameW, x, uy, xe, uy+thickness, fg)
 		}
 	case emu.UnderlineCurly:
-		// Approximate curly as a thicker single line for now.
-		fillRect(buf, frameW, x0, uy-1, x1, uy+thickness, fg)
+		// Sine-ish undercurl: one full wave every ~cell-ish period.
+		const period = 8
+		const amp = 2
+		base := uy - 1
+		for x := x0; x < x1; x++ {
+			phase := (x - x0) % period
+			var dy int
+			switch {
+			case phase < 2:
+				dy = 0
+			case phase < 4:
+				dy = -amp
+			case phase < 6:
+				dy = 0
+			default:
+				dy = amp
+			}
+			y := base + dy
+			fillRect(buf, frameW, x, y, x+1, y+thickness, fg)
+		}
 	default:
 		fillRect(buf, frameW, x0, uy, x1, uy+thickness, fg)
 	}

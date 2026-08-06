@@ -128,13 +128,13 @@ func TestHandleButtonWithMouseTrackingSendsButtonReport(t *testing.T) {
 	active := s.mgr.Active()
 	_, _ = active.Term.Write([]byte("\x1b[?1000h"))
 
-	s.handleButton(active, 10, 10, 0, 0, gpucontext.ButtonsLeft, true)
+	s.handleButton(active, 10, 10, 0, 0, gpucontext.ButtonsLeft, true, 0)
 }
 
 func TestHandleButtonZeroCellMetricsIsNoop(t *testing.T) {
 	s, _ := testUIStateWithTab(t)
 	s.cellW = 0
-	s.handleButton(s.mgr.Active(), 10, 10, 0, 0, gpucontext.ButtonsLeft, true)
+	s.handleButton(s.mgr.Active(), 10, 10, 0, 0, gpucontext.ButtonsLeft, true, 0)
 }
 
 func TestHandleButtonDoubleClickSelectsWord(t *testing.T) {
@@ -142,9 +142,9 @@ func TestHandleButtonDoubleClickSelectsWord(t *testing.T) {
 	active := s.mgr.Active()
 	_, _ = active.Term.Write([]byte("hello world"))
 
-	s.handleButton(active, 0, 0, 0, 0, gpucontext.ButtonsLeft, true)
-	s.handleButton(active, 0, 0, 0, 0, gpucontext.ButtonsLeft, false)
-	s.handleButton(active, 0, 0, 0, 0, gpucontext.ButtonsLeft, true) // second click -> RegisterClick true
+	s.handleButton(active, 0, 0, 0, 0, gpucontext.ButtonsLeft, true, 0)
+	s.handleButton(active, 0, 0, 0, 0, gpucontext.ButtonsLeft, false, 0)
+	s.handleButton(active, 0, 0, 0, 0, gpucontext.ButtonsLeft, true, 0) // second click -> RegisterClick true
 }
 
 func TestHandleButtonCopyOnSelect(t *testing.T) {
@@ -153,8 +153,8 @@ func TestHandleButtonCopyOnSelect(t *testing.T) {
 	active := s.mgr.Active()
 	_, _ = active.Term.Write([]byte("hello"))
 	s.cellW, s.cellH = 7, 13
-	s.handleButton(active, 10, 20, 0, 0, gpucontext.ButtonsLeft, true)
-	s.handleButton(active, 20, 20, 0, 0, gpucontext.ButtonsLeft, false)
+	s.handleButton(active, 10, 20, 0, 0, gpucontext.ButtonsLeft, true, 0)
+	s.handleButton(active, 20, 20, 0, 0, gpucontext.ButtonsLeft, false, 0)
 	_ = app
 }
 

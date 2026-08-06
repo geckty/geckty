@@ -21,6 +21,9 @@ const (
 	ActionCopy             Action = "copy"
 	ActionPaste            Action = "paste"
 	ActionSearchScrollback Action = "search_scrollback"
+	ActionIncreaseFontSize Action = "increase_font_size"
+	ActionDecreaseFontSize Action = "decrease_font_size"
+	ActionResetFontSize    Action = "reset_font_size"
 )
 
 var validActions = map[string]Action{
@@ -31,6 +34,9 @@ var validActions = map[string]Action{
 	string(ActionCopy):             ActionCopy,
 	string(ActionPaste):            ActionPaste,
 	string(ActionSearchScrollback): ActionSearchScrollback,
+	string(ActionIncreaseFontSize): ActionIncreaseFontSize,
+	string(ActionDecreaseFontSize): ActionDecreaseFontSize,
+	string(ActionResetFontSize):    ActionResetFontSize,
 }
 
 // namedKeyBindings maps config-file key names to gpucontext.Key values for
