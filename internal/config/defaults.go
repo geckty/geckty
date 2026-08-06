@@ -72,6 +72,7 @@ func defaultKeybindings() []Keybinding {
 			{Key: "[", Mods: []string{"cmd", "shift"}, Action: "prev_tab"},
 			{Key: "C", Mods: []string{"cmd"}, Action: "copy"},
 			{Key: "V", Mods: []string{"cmd"}, Action: "paste"},
+			{Key: "F", Mods: []string{"cmd", "shift"}, Action: "search_scrollback"},
 		}
 	}
 	return []Keybinding{
@@ -81,5 +82,6 @@ func defaultKeybindings() []Keybinding {
 		{Key: "Tab", Mods: []string{"ctrl", "shift"}, Action: "prev_tab"},
 		{Key: "C", Mods: []string{"ctrl", "shift"}, Action: "copy"},
 		{Key: "V", Mods: []string{"ctrl", "shift"}, Action: "paste"},
+		{Key: "F", Mods: []string{"ctrl", "shift"}, Action: "search_scrollback"},
 	}
 }

@@ -90,6 +90,8 @@ type uiState struct {
 	hoverPlus      bool
 	scrollBarUntil time.Time
 	selEdgeLast    time.Time // last edge auto-scroll tick while dragging a selection
+	search         searchState
+	lastMods       gpucontext.Modifiers // latest known mods for Shift+wheel override
 
 	scrollAccumPx float64
 
@@ -516,6 +518,10 @@ func (s *uiState) setKeyEcho(text string) {
 // callbacks (see keyEcho's doc comment).
 func (s *uiState) handleKeyPress(key gpucontext.Key, mods gpucontext.Modifiers) {
 	s.keyEcho = ""
+	s.lastMods = mods
+	if s.handleSearchKey(key, mods) {
+		return
+	}
 	if action, ok := s.keymap.Match(key, mods); ok {
 		s.dispatchAction(action)
 		s.setKeyEcho(keyToChar[key])
@@ -580,6 +586,10 @@ func (s *uiState) tryScrollbackKey(key gpucontext.Key, mods gpucontext.Modifiers
 }
 
 func (s *uiState) handleKeyRelease(key gpucontext.Key, mods gpucontext.Modifiers) {
+	s.lastMods = mods
+	if s.searchActive() {
+		return
+	}
 	active := s.mgr.Active()
 	if active == nil {
 		return
@@ -603,6 +613,9 @@ func (s *uiState) handleTextInput(text string) {
 		}
 	}
 	if text == "" {
+		return
+	}
+	if s.handleSearchText(text) {
 		return
 	}
 	active := s.mgr.Active()
@@ -640,6 +653,12 @@ func (s *uiState) dispatchAction(action Action) {
 				active.Term.RUnlock()
 				_, _ = active.Write(paste.Encode(mode, text))
 			}
+		}
+	case ActionSearchScrollback:
+		if s.searchActive() {
+			s.closeSearch()
+		} else {
+			s.openSearch()
 		}
 	}
 }
@@ -745,6 +764,7 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 		s.paintScrollBarOverlay(fw, fh, tabBarH+padPx, active, time.Now().Before(s.scrollBarUntil))
 		s.paintCommandBorder(fw, fh, active)
 	}
+	s.paintSearchOverlay(fw, fh, padPx, tabBarH)
 }
 
 // commandBorderThicknessDp is the active tab's OSC 133 status border's

@@ -120,7 +120,7 @@ func (s *uiState) handleScroll(sess *session.Session, x, y, chromeHeightPx, padP
 	sz := sess.Term.Size()
 	sess.Term.RUnlock()
 
-	if !mouse.TrackingEnabled(mode) {
+	if !mouse.TrackingEnabled(mode) || s.lastMods.HasShift() {
 		sess.ScrollBy(-lines)
 		s.scrollBarUntil = time.Now().Add(1200 * time.Millisecond)
 		s.app.RequestRedraw()

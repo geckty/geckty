@@ -14,21 +14,23 @@ type Action string
 
 // Actions Keymap recognizes.
 const (
-	ActionNewTab   Action = "new_tab"
-	ActionCloseTab Action = "close_tab"
-	ActionNextTab  Action = "next_tab"
-	ActionPrevTab  Action = "prev_tab"
-	ActionCopy     Action = "copy"
-	ActionPaste    Action = "paste"
+	ActionNewTab           Action = "new_tab"
+	ActionCloseTab         Action = "close_tab"
+	ActionNextTab          Action = "next_tab"
+	ActionPrevTab          Action = "prev_tab"
+	ActionCopy             Action = "copy"
+	ActionPaste            Action = "paste"
+	ActionSearchScrollback Action = "search_scrollback"
 )
 
 var validActions = map[string]Action{
-	string(ActionNewTab):   ActionNewTab,
-	string(ActionCloseTab): ActionCloseTab,
-	string(ActionNextTab):  ActionNextTab,
-	string(ActionPrevTab):  ActionPrevTab,
-	string(ActionCopy):     ActionCopy,
-	string(ActionPaste):    ActionPaste,
+	string(ActionNewTab):           ActionNewTab,
+	string(ActionCloseTab):         ActionCloseTab,
+	string(ActionNextTab):          ActionNextTab,
+	string(ActionPrevTab):          ActionPrevTab,
+	string(ActionCopy):             ActionCopy,
+	string(ActionPaste):            ActionPaste,
+	string(ActionSearchScrollback): ActionSearchScrollback,
 }
 
 // namedKeyBindings maps config-file key names to gpucontext.Key values for

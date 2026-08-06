@@ -145,7 +145,8 @@ hot_reload = true
 #
 # key: a gpucontext.Key name ("A".."Z", "0".."9", "Tab", "[", "]", ...)
 # mods: any of "ctrl", "shift", "alt", "cmd" (cmd is macOS-only)
-# action: "new_tab", "close_tab", "next_tab", "prev_tab", "copy", "paste"
+# action: "new_tab", "close_tab", "next_tab", "prev_tab", "copy", "paste",
+#         "search_scrollback"
 #
 # Defaults avoid plain Ctrl+T/Ctrl+W/Ctrl+C/Ctrl+V: those are shell
 # readline/job-control bindings (transpose-char, delete-word-backward,
@@ -182,5 +183,10 @@ hot_reload = true
 # mods = ["cmd"]
 # action = "paste"
 #
-# Other platforms default to Ctrl+Shift+T/W/C/V and Ctrl+(Shift+)Tab
+# [[keybindings]]
+# key = "F"
+# mods = ["cmd", "shift"]
+# action = "search_scrollback"
+#
+# Other platforms default to Ctrl+Shift+T/W/C/V/F and Ctrl+(Shift+)Tab
 # instead.
