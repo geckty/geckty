@@ -64,8 +64,11 @@ type Session struct {
 	// selHistOffset tracks Term.HistoryOffset() so prune deltas can shift
 	// selection AbsLines (see syncSelectionHistoryOffset).
 	selHistOffset int
-	osc52         *osc52Bridge
-	gfx           *graphics
+	// lastPromptJump is the AbsLine of the most recent ScrollToPrompt /
+	// SelectLastCommandOutput target (-1 = none yet).
+	lastPromptJump int
+	osc52          *osc52Bridge
+	gfx            *graphics
 }
 
 // New spawns a shell per cfg and wires its PTY output into a VT terminal of
@@ -105,10 +108,11 @@ func newWithPTY(p pty.PTY, cols, rows int, cfg Config) *Session {
 		log = slog.Default()
 	}
 	s := &Session{
-		PTY:     p,
-		onDirty: cfg.OnDirty,
-		onExit:  cfg.OnExit,
-		osc52:   newOSC52Bridge(cfg.Clipboard, log.With(slog.String("op", "session.osc52"))),
+		PTY:            p,
+		onDirty:        cfg.OnDirty,
+		onExit:         cfg.OnExit,
+		lastPromptJump: -1,
+		osc52:          newOSC52Bridge(cfg.Clipboard, log.With(slog.String("op", "session.osc52"))),
 	}
 	s.Term = vt.New(cols, rows, writerFunc(s.Write), s.osc52, cfg.HistoryLimit)
 	s.gfx = newGraphics(s)

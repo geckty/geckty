@@ -147,8 +147,9 @@ hot_reload = true
 # mods: any of "ctrl", "shift", "alt", "cmd" (cmd is macOS-only)
 # action: "new_tab", "close_tab", "close_pane", "next_tab", "prev_tab",
 #         "next_pane", "prev_pane", "split_vertical", "split_horizontal",
-#         "copy", "paste", "search_scrollback", "increase_font_size",
-#         "decrease_font_size", "reset_font_size"
+#         "scroll_to_prev_prompt", "scroll_to_next_prompt",
+#         "select_last_command_output", "copy", "paste", "search_scrollback",
+#         "increase_font_size", "decrease_font_size", "reset_font_size"
 #
 # Defaults avoid plain Ctrl+T/Ctrl+W/Ctrl+C/Ctrl+V: those are shell
 # readline/job-control bindings (transpose-char, delete-word-backward,
@@ -230,5 +231,21 @@ hot_reload = true
 # mods = ["cmd", "alt"]
 # action = "prev_pane"
 #
+# [[keybindings]]
+# key = "Z"
+# mods = ["ctrl", "shift"]
+# action = "scroll_to_prev_prompt"
+#
+# [[keybindings]]
+# key = "X"
+# mods = ["ctrl", "shift"]
+# action = "scroll_to_next_prompt"
+#
+# [[keybindings]]
+# key = "G"
+# mods = ["ctrl", "shift"]
+# action = "select_last_command_output"
+#
 # Other platforms default to Ctrl+Shift for tabs/copy/paste/split_vertical,
 # Ctrl+Alt for split_horizontal/panes/close_tab, and Ctrl+(Shift+)Tab.
+# Prompt navigation uses Ctrl+Shift+Z/X/G on every platform (Kitty-compatible).

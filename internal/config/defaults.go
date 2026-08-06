@@ -81,6 +81,9 @@ func defaultKeybindings() []Keybinding {
 			{Key: "D", Mods: []string{"cmd", "shift"}, Action: "split_horizontal"},
 			{Key: "]", Mods: []string{"cmd", "alt"}, Action: "next_pane"},
 			{Key: "[", Mods: []string{"cmd", "alt"}, Action: "prev_pane"},
+			{Key: "Z", Mods: []string{"ctrl", "shift"}, Action: "scroll_to_prev_prompt"},
+			{Key: "X", Mods: []string{"ctrl", "shift"}, Action: "scroll_to_next_prompt"},
+			{Key: "G", Mods: []string{"ctrl", "shift"}, Action: "select_last_command_output"},
 		}
 	}
 	return []Keybinding{
@@ -99,5 +102,8 @@ func defaultKeybindings() []Keybinding {
 		{Key: "D", Mods: []string{"ctrl", "alt"}, Action: "split_horizontal"},
 		{Key: "]", Mods: []string{"ctrl", "alt"}, Action: "next_pane"},
 		{Key: "[", Mods: []string{"ctrl", "alt"}, Action: "prev_pane"},
+		{Key: "Z", Mods: []string{"ctrl", "shift"}, Action: "scroll_to_prev_prompt"},
+		{Key: "X", Mods: []string{"ctrl", "shift"}, Action: "scroll_to_next_prompt"},
+		{Key: "G", Mods: []string{"ctrl", "shift"}, Action: "select_last_command_output"},
 	}
 }

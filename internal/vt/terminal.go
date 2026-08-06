@@ -32,6 +32,12 @@ type Terminal struct {
 	// each call — see foldSemanticPrompts.
 	cmd CommandState
 
+	// promptMarks retains OSC 133 A/C/D positions as AbsLine anchors so
+	// the UI can scroll between prompts and select last-command output
+	// without modifying vendored emu history cells.
+	promptMarks      []PromptMark
+	promptHistOffset int
+
 	// bellPending is set when BEL was seen since the last TakeBell.
 	bellPending bool
 }
@@ -40,13 +46,9 @@ type Terminal struct {
 // render a "command running" indicator against — e.g. the active tab's
 // pill in the tab bar (see internal/ui/gogpu/tabbar.go's paintTab).
 //
-// Deliberately doesn't track *which row* the command started on: OSC 133
-// positions are screen-relative at the moment they're received, and would
-// need continuous adjustment as output scrolls the screen to stay
-// meaningful — a "mark" durable across scrollback is a real terminal
-// feature (iTerm2, WezTerm) but needs metadata attached to history lines
-// in the vendored emu package (internal/vt/emu/NOTICE.md's "no behavioral
-// changes" policy for that vendored copy), not something to bolt on here.
+// Prompt/command positions for scroll_to_prompt and last-command-output
+// live separately in PromptMarks (AbsLine-anchored); this struct only
+// tracks the live Running/ExitCode flash state.
 type CommandState struct {
 	// Running is true from OSC 133;C (command executed) until the
 	// matching OSC 133;D (command finished).
@@ -108,8 +110,9 @@ type semanticPromptSource interface {
 // foldSemanticPrompts drains emu's per-write OSC 133 event log (nothing
 // else in geckty currently consumes emu.Dirty, so this is also the only
 // place that needs to clear it — see emu.Dirty.Reset's doc comment) into
-// cmd's durable Running/ExitCode state. Called with t.mu held.
+// cmd's durable Running/ExitCode state and promptMarks. Called with t.mu held.
 func (t *Terminal) foldSemanticPrompts() {
+	t.syncPromptMarkOffset()
 	src, ok := t.Terminal.(semanticPromptSource)
 	if !ok {
 		return
@@ -120,6 +123,7 @@ func (t *Terminal) foldSemanticPrompts() {
 		return
 	}
 	for _, ev := range events {
+		t.recordPromptMark(ev)
 		switch ev.Type {
 		case emu.CommandExecuted:
 			t.cmd.Running = true

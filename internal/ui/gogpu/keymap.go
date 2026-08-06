@@ -29,6 +29,9 @@ const (
 	ActionNextPane         Action = "next_pane"
 	ActionPrevPane         Action = "prev_pane"
 	ActionClosePane        Action = "close_pane"
+	ActionScrollToPrevPrompt Action = "scroll_to_prev_prompt"
+	ActionScrollToNextPrompt Action = "scroll_to_next_prompt"
+	ActionSelectLastCmdOutput Action = "select_last_command_output"
 )
 
 var validActions = map[string]Action{
@@ -47,6 +50,9 @@ var validActions = map[string]Action{
 	string(ActionNextPane):         ActionNextPane,
 	string(ActionPrevPane):         ActionPrevPane,
 	string(ActionClosePane):        ActionClosePane,
+	string(ActionScrollToPrevPrompt): ActionScrollToPrevPrompt,
+	string(ActionScrollToNextPrompt): ActionScrollToNextPrompt,
+	string(ActionSelectLastCmdOutput): ActionSelectLastCmdOutput,
 }
 
 // namedKeyBindings maps config-file key names to gpucontext.Key values for

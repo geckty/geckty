@@ -707,6 +707,21 @@ func (s *uiState) dispatchAction(action Action) {
 		s.splitActivePane(session.SplitVertical)
 	case ActionSplitHorizontal:
 		s.splitActivePane(session.SplitHorizontal)
+	case ActionScrollToPrevPrompt:
+		if active := s.mgr.Active(); active != nil && active.ScrollToPrompt(-1) {
+			s.scrollBarUntil = time.Now().Add(1200 * time.Millisecond)
+			s.app.RequestRedraw()
+		}
+	case ActionScrollToNextPrompt:
+		if active := s.mgr.Active(); active != nil && active.ScrollToPrompt(1) {
+			s.scrollBarUntil = time.Now().Add(1200 * time.Millisecond)
+			s.app.RequestRedraw()
+		}
+	case ActionSelectLastCmdOutput:
+		if active := s.mgr.Active(); active != nil && active.SelectLastCommandOutput() {
+			s.scrollBarUntil = time.Now().Add(1200 * time.Millisecond)
+			s.app.RequestRedraw()
+		}
 	case ActionCopy:
 		if active := s.mgr.Active(); active != nil {
 			if text, ok := active.SelectedText(); ok && text != "" {

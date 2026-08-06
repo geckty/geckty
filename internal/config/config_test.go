@@ -219,6 +219,8 @@ func TestDefaultKeybindingsNonEmpty(t *testing.T) {
 		"copy": true, "paste": true,
 		"split_vertical": true, "split_horizontal": true,
 		"next_pane": true, "prev_pane": true, "close_pane": true,
+		"scroll_to_prev_prompt": true, "scroll_to_next_prompt": true,
+		"select_last_command_output": true,
 	}
 	for _, kb := range kbs {
 		delete(wantActions, kb.Action)
