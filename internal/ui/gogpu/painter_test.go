@@ -117,6 +117,25 @@ func TestSelectionColRangeOutsideRowRange(t *testing.T) {
 	}
 }
 
+func TestSelectionColRangeRect(t *testing.T) {
+	sel := testSelection(2, 0, 4, 2)
+	sel.Rect = true
+	colStart, colEnd, ok := selectionColRange(sel, 1, 10)
+	if !ok || colStart != 2 || colEnd != 5 {
+		t.Fatalf("rect mid = %d,%d,%v want 2,5,true", colStart, colEnd, ok)
+	}
+	if _, _, ok := selectionColRange(sel, 5, 10); ok {
+		t.Fatal("row outside rect should miss")
+	}
+}
+
+func TestWithAlpha(t *testing.T) {
+	c := withAlpha(color.RGBA{R: 1, G: 2, B: 3, A: 0xff}, 0x40)
+	if c.A != 0x40 || c.R != 1 {
+		t.Fatalf("withAlpha = %+v", c)
+	}
+}
+
 func TestCellSpanUsesRequestedColsRows(t *testing.T) {
 	pl := Placement{Cols: 5, Rows: 2}
 	cols, rows := cellSpan(pl, image.Pt(999, 999), 10, 20)

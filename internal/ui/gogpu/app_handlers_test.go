@@ -259,3 +259,66 @@ func TestHandleKeyReleaseWithKittyEventTypes(t *testing.T) {
 	active.Term.Parse([]byte("\x1b[>3u"))
 	s.handleKeyRelease(gpucontext.KeyEscape, 0) // must not panic; may write CSI-u release
 }
+
+func TestSplitActivePane(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	before := len(s.mgr.AllSessions())
+	s.dispatchAction(ActionSplitVertical)
+	if len(s.mgr.AllSessions()) != before+1 {
+		t.Fatalf("sessions after split = %d, want %d", len(s.mgr.AllSessions()), before+1)
+	}
+	if app.redrawCount.Load() == 0 {
+		t.Fatal("split should request redraw")
+	}
+	s.dispatchAction(ActionNextPane)
+	s.dispatchAction(ActionSplitHorizontal)
+	if len(s.mgr.AllSessions()) < before+2 {
+		t.Fatal("horizontal split should add another pane")
+	}
+}
+
+func TestDrainBellsAndPaintVisualBell(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	active.Term.Parse([]byte("\a"))
+	before := app.redrawCount.Load()
+	s.drainBells()
+	if app.redrawCount.Load() <= before {
+		t.Fatal("drainBells should request redraw after BEL")
+	}
+	if time.Now().After(s.visualBellUntil) {
+		t.Fatal("visualBellUntil should be in the future")
+	}
+	s.frame = make([]byte, 100*100*4)
+	s.paintVisualBell(100, 100)
+}
+
+func TestPaintConfirmCloseOverlay(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	s.confirmClose = true
+	s.frame = make([]byte, 200*120*4)
+	s.paintConfirmCloseOverlay(200, 120, 8)
+}
+
+func TestTryScrollbackKey(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	for i := 0; i < 30; i++ {
+		active.Term.Parse([]byte("line\r\n"))
+	}
+	if !s.tryScrollbackKey(gpucontext.KeyPageUp, gpucontext.ModShift) {
+		t.Fatal("Shift+PageUp should scroll locally")
+	}
+	if active.ScrollOffset() == 0 {
+		t.Fatal("expected non-zero scroll offset after PageUp")
+	}
+	if app.redrawCount.Load() == 0 {
+		t.Fatal("scrollback key should redraw")
+	}
+	if !s.tryScrollbackKey(gpucontext.KeyPageDown, 0) {
+		t.Fatal("plain PageDown while scrolled should work")
+	}
+	if s.tryScrollbackKey(gpucontext.KeyA, gpucontext.ModShift) {
+		t.Fatal("non-page keys must not be consumed")
+	}
+}

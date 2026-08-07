@@ -1,6 +1,7 @@
 package session
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -468,6 +469,44 @@ func TestViewportTopHelpers(t *testing.T) {
 	if got := viewToAbsLine(5, 2, 2, 3, 1); got != 3 {
 		// top = 5+2-2-3 = 2; + viewRow 1 = 3
 		t.Fatalf("viewToAbsLine = %d, want 3", got)
+	}
+}
+
+func TestSelectionRectAndDragging(t *testing.T) {
+	p := newFakePTY()
+	dirty := make(chan struct{}, 8)
+	s := newTestSession(p, 20, 4, func() { dirty <- struct{}{} })
+	go s.Run()
+	defer func() { _ = s.Close() }()
+
+	writeAndWaitDirty(t, p, dirty, "abcdef\r\nghijkl\r\n")
+
+	s.StartSelectionMode(1, 0, true)
+	if !s.SelectionDragging() {
+		t.Fatal("expected dragging after StartSelectionMode")
+	}
+	if !s.SelectionRect() {
+		t.Fatal("expected rectangular selection")
+	}
+	s.ExtendSelection(3, 1)
+	start, end, ok := s.Selection()
+	if !ok || start.Col != 1 || end.Col != 3 || start.AbsLine != 0 || end.AbsLine != 1 {
+		t.Fatalf("rect bounds = %+v %+v ok=%v", start, end, ok)
+	}
+	text, ok := s.SelectedText()
+	if !ok {
+		t.Fatal("SelectedText should succeed for rect")
+	}
+	// Columns 1..3 of each line: bcd / hij
+	if !strings.Contains(text, "bcd") || !strings.Contains(text, "hij") {
+		t.Fatalf("SelectedText = %q, want columns bcd/hij", text)
+	}
+	s.EndSelection()
+	if s.SelectionDragging() {
+		t.Fatal("dragging should clear after EndSelection")
+	}
+	if !s.SelectionRect() {
+		t.Fatal("rect mode should remain after EndSelection")
 	}
 }
 

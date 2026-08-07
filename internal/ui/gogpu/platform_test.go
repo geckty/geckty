@@ -26,6 +26,7 @@ type fakeApp struct {
 	clipboard    string
 	clipReadErr  error
 	clipWriteErr error
+	cursor       gpucontext.CursorShape
 
 	events *fakeEventSource
 }
@@ -76,6 +77,10 @@ func (f *fakeApp) ClipboardRead() (string, error) {
 		return "", f.clipReadErr
 	}
 	return f.clipboard, nil
+}
+
+func (f *fakeApp) SetCursor(shape gpucontext.CursorShape) {
+	f.cursor = shape
 }
 
 // fakeEventSource implements gpucontext.EventSource plus the

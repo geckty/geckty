@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"io"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -403,13 +404,33 @@ func TestManagerSplitAndClosePane(t *testing.T) {
 		t.Fatalf("ActiveLayout leaves=%d focus=%v ok=%v", len(leaves), focus, ok)
 	}
 
-	m.NextPane()
+	m.SetFocus(s1)
 	if m.Active() != s1 {
-		t.Fatal("NextPane should cycle to s1")
+		t.Fatal("SetFocus should switch active pane")
+	}
+	m.SetFocus(&Session{}) // unknown session: no-op
+	if m.Active() != s1 {
+		t.Fatal("SetFocus unknown must leave focus unchanged")
+	}
+
+	var layoutCalls int
+	m.EachTabLayout(0, 0, 100, 40, func(rects []PaneRect) {
+		layoutCalls++
+		if len(rects) != 2 {
+			t.Fatalf("EachTabLayout rects = %d, want 2", len(rects))
+		}
+	})
+	if layoutCalls != 1 {
+		t.Fatalf("EachTabLayout calls = %d, want 1", layoutCalls)
+	}
+
+	m.NextPane()
+	if m.Active() != s2 {
+		t.Fatal("NextPane should cycle to s2")
 	}
 	m.PrevPane()
-	if m.Active() != s2 {
-		t.Fatal("PrevPane should cycle back to s2")
+	if m.Active() != s1 {
+		t.Fatal("PrevPane should cycle back to s1")
 	}
 
 	if err := m.CloseSession(s2); err != nil {
@@ -423,6 +444,20 @@ func TestManagerSplitAndClosePane(t *testing.T) {
 	}
 	if len(m.Tabs()) != 1 {
 		t.Fatal("tab should remain after closing one pane")
+	}
+}
+
+func TestScrollbackText(t *testing.T) {
+	p := newFakePTY()
+	dirty := make(chan struct{}, 8)
+	s := newTestSession(p, 20, 3, func() { dirty <- struct{}{} })
+	go s.Run()
+	defer func() { _ = s.Close() }()
+
+	writeAndWaitDirty(t, p, dirty, "hello\r\nworld\r\n")
+	got := s.ScrollbackText()
+	if !strings.Contains(got, "hello") || !strings.Contains(got, "world") {
+		t.Fatalf("ScrollbackText = %q", got)
 	}
 }
 

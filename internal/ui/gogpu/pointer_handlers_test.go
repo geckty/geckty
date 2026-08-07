@@ -5,6 +5,7 @@ import (
 
 	"github.com/gogpu/gpucontext"
 
+	"github.com/geckty/geckty/internal/session"
 	"github.com/geckty/geckty/internal/ui/chrome"
 )
 
@@ -310,4 +311,86 @@ func TestTabStripScrollDelta(t *testing.T) {
 	if got := tabStripScrollDelta(0, 0, 100); got != 0 {
 		t.Fatalf("zero delta: got %d, want 0", got)
 	}
+}
+
+func TestPaneForSession(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	if _, ok := s.paneForSession(nil); ok {
+		t.Fatal("nil session should miss")
+	}
+	pane, ok := s.paneForSession(active)
+	if !ok || pane.Session != active {
+		t.Fatal("expected pane for active session")
+	}
+	if _, ok := s.paneForSession(&session.Session{}); ok {
+		t.Fatal("unknown session should miss")
+	}
+}
+
+func TestPasteClipboardInto(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	s.pasteClipboardInto(nil) // no-op
+	app.clipboard = "paste-me"
+	active := s.mgr.Active()
+	active.StartSelection(0, 0)
+	active.ExtendSelection(1, 0)
+	s.pasteClipboardInto(active)
+	if _, _, ok := active.Selection(); ok {
+		t.Fatal("paste should clear selection")
+	}
+}
+
+func TestTryScrollBarClick(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	for i := 0; i < 40; i++ {
+		active.Term.Parse([]byte("line\r\n"))
+	}
+	if len(active.Term.History()) == 0 {
+		t.Fatal("expected scrollback history for scrollbar seek")
+	}
+	pane := s.activePaneRects[0]
+	x0 := s.frameW - 7 - 2
+	if !s.tryScrollBarClick(pane, x0, pane.Y+pane.H/2) {
+		t.Fatal("click on track should seek")
+	}
+	if app.redrawCount.Load() == 0 {
+		t.Fatal("scrollbar seek should redraw")
+	}
+	if s.tryScrollBarClick(pane, 0, pane.Y) {
+		t.Fatal("click left of track should miss")
+	}
+}
+
+func TestUpdatePointerCursor(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	active.Term.Parse([]byte("https://example.com/x\r\n"))
+	pane := s.activePaneRects[0]
+	// Text cell (col 0) → I-beam.
+	s.updatePointerCursor(pane.X, pane.Y)
+	if app.cursor != gpucontext.CursorText && app.cursor != gpucontext.CursorPointer {
+		// URL may start at col 0 depending on parse; either text or pointer is fine.
+		t.Fatalf("cursor = %v", app.cursor)
+	}
+	// Outside panes → default.
+	s.activePaneRects = nil
+	s.updatePointerCursor(10, 10)
+	if app.cursor != gpucontext.CursorDefault {
+		t.Fatalf("outside pane cursor = %v, want default", app.cursor)
+	}
+}
+
+func TestMiddleClickPastes(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	app.clipboard = "mid"
+	pane := s.activePaneRects[0]
+	ev := gpucontext.PointerEvent{
+		Type:   gpucontext.PointerDown,
+		X:      float64(pane.X + 10),
+		Y:      float64(pane.Y + 10),
+		Button: gpucontext.ButtonMiddle,
+	}
+	s.handlePointerEvent(ev) // must not panic
 }
