@@ -86,11 +86,11 @@ type URLHit struct {
 }
 
 // CollectURLs scans History()+Screen() for OSC 8 hyperlinks and plain
-// urlPattern matches, deduped by URL+AbsLine. Caps at max (default 64 when
-// max <= 0).
-func (s *Session) CollectURLs(max int) []URLHit {
-	if max <= 0 {
-		max = 64
+// urlPattern matches, deduped by URL+AbsLine. Caps at limit (default 64 when
+// limit <= 0).
+func (s *Session) CollectURLs(limit int) []URLHit {
+	if limit <= 0 {
+		limit = 64
 	}
 	s.Term.RLock()
 	defer s.Term.RUnlock()
@@ -106,7 +106,7 @@ func (s *Session) CollectURLs(max int) []URLHit {
 	seen := make(map[string]bool)
 	out := make([]URLHit, 0, 8)
 	add := func(url string, abs, col int) {
-		if url == "" || len(out) >= max {
+		if url == "" || len(out) >= limit {
 			return
 		}
 		key := url + "\x00" + strconv.Itoa(abs)
@@ -117,7 +117,7 @@ func (s *Session) CollectURLs(max int) []URLHit {
 		out = append(out, URLHit{URL: url, AbsLine: abs, Col: col})
 	}
 
-	for abs := 0; abs < total && len(out) < max; abs++ {
+	for abs := 0; abs < total && len(out) < limit; abs++ {
 		var line emu.Line
 		switch {
 		case abs < len(history):

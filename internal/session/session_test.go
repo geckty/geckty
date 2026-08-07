@@ -386,7 +386,7 @@ func TestManagerSplitAndClosePane(t *testing.T) {
 	m.mu.Unlock()
 
 	s2 := newTestSession(newFakePTY(), 10, 2, nil)
-	m.SetSpawn(func(cols, rows int) (*Session, error) {
+	m.SetSpawn(func(_, _ int) (*Session, error) {
 		return s2, nil
 	})
 

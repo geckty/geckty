@@ -60,7 +60,7 @@ func ListenAndServe(path string, host Host) (stop func(), err error) {
 			wg.Add(1)
 			go func(c net.Conn) {
 				defer wg.Done()
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				_ = serveConn(c, host)
 			}(conn)
 		}
@@ -180,7 +180,7 @@ func DialAndSend(path, line string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if _, err := io.WriteString(conn, line+"\n"); err != nil {
 		return "", err
 	}

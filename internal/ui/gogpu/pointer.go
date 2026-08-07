@@ -18,9 +18,9 @@ const (
 
 	// Selection drag near the top/bottom of the grid scrolls scrollback so
 	// the selection can extend past the visible viewport (Kitty-style).
-	selEdgeZoneCells       = 1
-	selEdgeScrollInterval  = 50 * time.Millisecond
-	selEdgeScrollLines     = 1
+	selEdgeZoneCells      = 1
+	selEdgeScrollInterval = 50 * time.Millisecond
+	selEdgeScrollLines    = 1
 )
 
 // handlePointerEvent routes pointer events to the tab bar or the grid:

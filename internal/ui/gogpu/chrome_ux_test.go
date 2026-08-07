@@ -6,7 +6,7 @@ import (
 	"github.com/gogpu/gpucontext"
 )
 
-func TestLoadSymbolFallbackFaceMayBeNil(t *testing.T) {
+func TestLoadSymbolFallbackFaceMayBeNil(_ *testing.T) {
 	// On CI without system symbol fonts this is nil; on developer machines
 	// it usually resolves. Either way it must not panic.
 	_ = loadSymbolFallbackFace(13, 1)

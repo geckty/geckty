@@ -15,11 +15,11 @@ func openURL(u string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", u)
+		cmd = exec.Command("open", u) //nolint:gosec // G204: URL from terminal hyperlink / plain detect
 	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", u) //nolint:gosec // G204
 	default:
-		cmd = exec.Command("xdg-open", u)
+		cmd = exec.Command("xdg-open", u) //nolint:gosec // G204
 	}
 	_ = cmd.Start()
 }

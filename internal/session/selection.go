@@ -54,7 +54,7 @@ type selectionState struct {
 	// but is a deliberate selection, not a plain click's accidental
 	// leftover.
 	complete bool
-	rect     bool // Alt-drag rectangular column span
+	rect     bool    // Alt-drag rectangular column span
 	anchor   cellPos // where the drag/click started
 	head     cellPos // current/last drag position
 }

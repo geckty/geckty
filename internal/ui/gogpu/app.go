@@ -820,12 +820,12 @@ func (s *uiState) splitActivePane(dir session.SplitDir) {
 	cols, rows := sz.C, sz.R
 	switch dir {
 	case session.SplitVertical:
-		cols = cols / 2
+		cols /= 2
 		if cols < 1 {
 			cols = 1
 		}
 	default:
-		rows = rows / 2
+		rows /= 2
 		if rows < 1 {
 			rows = 1
 		}

@@ -221,7 +221,7 @@ func TestDefaultKeybindingsNonEmpty(t *testing.T) {
 		"next_pane": true, "prev_pane": true, "close_pane": true,
 		"scroll_to_prev_prompt": true, "scroll_to_next_prompt": true,
 		"select_last_command_output": true,
-		"open_url_hints": true, "show_scrollback": true,
+		"open_url_hints":             true, "show_scrollback": true,
 	}
 	for _, kb := range kbs {
 		delete(wantActions, kb.Action)

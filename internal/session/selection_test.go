@@ -509,4 +509,3 @@ func TestSelectionRectAndDragging(t *testing.T) {
 		t.Fatal("rect mode should remain after EndSelection")
 	}
 }
-

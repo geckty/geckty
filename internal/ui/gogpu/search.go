@@ -12,12 +12,12 @@ import (
 
 // searchState is the in-window scrollback find UI (Kitty-style overlay).
 type searchState struct {
-	active  bool
-	query   string
-	hit     session.SearchHit
-	hasHit  bool
-	count   int
-	status  string // e.g. "no matches"
+	active bool
+	query  string
+	hit    session.SearchHit
+	hasHit bool
+	count  int
+	status string // e.g. "no matches"
 }
 
 func (s *uiState) openSearch() {
@@ -157,7 +157,7 @@ func (s *uiState) searchStep(forward bool) {
 
 // paintSearchOverlay draws the find bar at the bottom of the frame and
 // highlights the current hit when it intersects the viewport.
-func (s *uiState) paintSearchOverlay(fw, fh, padPx, tabBarH int) {
+func (s *uiState) paintSearchOverlay(fw, fh, padPx, _ int) {
 	if !s.search.active {
 		return
 	}

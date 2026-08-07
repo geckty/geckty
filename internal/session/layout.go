@@ -4,8 +4,10 @@ package session
 type SplitDir int
 
 const (
-	SplitVertical SplitDir = iota // left | right
-	SplitHorizontal               // top / bottom
+	// SplitVertical is left | right.
+	SplitVertical SplitDir = iota
+	// SplitHorizontal is top / bottom.
+	SplitHorizontal
 )
 
 // paneNode is one node in a tab's layout tree: either a leaf (Session set)

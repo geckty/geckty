@@ -30,11 +30,11 @@ func (s *uiState) showScrollbackInPager() {
 	var cmd *exec.Cmd
 	switch {
 	case pager != "":
-		cmd = exec.Command(pager, path)
+		cmd = exec.Command(pager, path) //nolint:gosec // G204: user $PAGER + temp scrollback file
 	case runtime.GOOS == "windows":
-		cmd = exec.Command("notepad", path)
+		cmd = exec.Command("notepad", path) //nolint:gosec // G204: temp scrollback path
 	default:
-		cmd = exec.Command("less", path)
+		cmd = exec.Command("less", path) //nolint:gosec // G204: temp scrollback path
 	}
 	_ = cmd.Start()
 }
