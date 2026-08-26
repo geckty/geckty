@@ -34,6 +34,15 @@ inline `[colors]` keys merge on top. See [`themes/glass.toml`](themes/glass.toml
 for a theme-file example. Tab chrome colors (`active_tab_background`, …)
 are optional — unset keys keep the glass-derived look.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)"
+    srcset="https://api.starhistory.io/png?repos=geckty/geckty&style=dark" />
+  <source media="(prefers-color-scheme: light)"
+    srcset="https://api.starhistory.io/png?repos=geckty/geckty&style=professional" />
+  <img src="https://api.starhistory.io/png?repos=geckty/geckty"
+    width="800" alt="Star History" />
+</picture>
+
 ## License
 
 [MIT](LICENSE)
