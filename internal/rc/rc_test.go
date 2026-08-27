@@ -130,16 +130,16 @@ func TestHandleLineHostErrors(t *testing.T) {
 }
 
 func TestSocketPath(t *testing.T) {
-	t.Setenv("GECKTY_SOCKET", "")
-	t.Setenv("GECKTY_LISTEN", "")
+	t.Setenv(EnvSocket, "")
+	t.Setenv(EnvListen, "")
 	if got := SocketPath(); got != "" {
 		t.Fatalf("SocketPath empty env = %q", got)
 	}
-	t.Setenv("GECKTY_LISTEN", " listen-path ")
+	t.Setenv(EnvListen, " listen-path ")
 	if got := SocketPath(); got != "listen-path" {
 		t.Fatalf("SocketPath LISTEN = %q", got)
 	}
-	t.Setenv("GECKTY_SOCKET", " sock-path ")
+	t.Setenv(EnvSocket, " sock-path ")
 	if got := SocketPath(); got != "sock-path" {
 		t.Fatalf("SocketPath SOCKET wins = %q", got)
 	}

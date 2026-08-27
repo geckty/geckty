@@ -6,12 +6,34 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
+
+// Environment variable names that enable the remote-control listener /
+// client. SocketPath prefers EnvSocket over EnvListen.
+const (
+	EnvSocket = "GECKTY_SOCKET"
+	EnvListen = "GECKTY_LISTEN"
+)
+
+// Command names accepted by ParseLine / HandleLine and by `geckty @`.
+const (
+	CmdNewTab    = "new_tab"
+	CmdCloseTab  = "close_tab"
+	CmdListTabs  = "list_tabs"
+	CmdGetText   = "get_text"
+	CmdSendText  = "send_text"
+	CmdSendTextA = "send-text" // CLI alias for CmdSendText
+)
+
+// DialTimeout bounds client connect + request/response for DialAndSend.
+const DialTimeout = 3 * time.Second
 
 // Host is the UI/session surface the listener invokes.
 type Host interface {
@@ -22,18 +44,19 @@ type Host interface {
 	ListTabs() ([]string, error)
 }
 
-// SocketPath returns the listen address from GECKTY_SOCKET or GECKTY_LISTEN.
+// SocketPath returns the listen address from EnvSocket or EnvListen.
 // Empty means remote control is disabled.
 func SocketPath() string {
-	if p := strings.TrimSpace(os.Getenv("GECKTY_SOCKET")); p != "" {
+	if p := strings.TrimSpace(os.Getenv(EnvSocket)); p != "" {
 		return p
 	}
-	return strings.TrimSpace(os.Getenv("GECKTY_LISTEN"))
+	return strings.TrimSpace(os.Getenv(EnvListen))
 }
 
 // ListenAndServe accepts connections on path (Unix socket, or tcp on
 // Windows when path looks like host:port / is a bare port). stop closes
-// the listener.
+// the listener. Transient Accept errors are logged and retried; only a
+// closed listener (via stop) ends the accept loop.
 func ListenAndServe(path string, host Host) (stop func(), err error) {
 	if path == "" || host == nil {
 		return func() {}, nil
@@ -54,7 +77,9 @@ func ListenAndServe(path string, host Host) (stop func(), err error) {
 				case <-done:
 					return
 				default:
-					return
+					slog.Warn("remote control accept", slog.String("path", path), slog.Any("error", err))
+					time.Sleep(50 * time.Millisecond)
+					continue
 				}
 			}
 			wg.Add(1)
@@ -77,23 +102,28 @@ func ListenAndServe(path string, host Host) (stop func(), err error) {
 
 func listen(path string) (net.Listener, error) {
 	if runtime.GOOS == "windows" {
-		addr := path
-		if !strings.Contains(path, ":") {
-			addr = "127.0.0.1:" + strings.TrimPrefix(path, ":")
-		}
-		return net.Listen("tcp", addr)
+		return net.Listen("tcp", windowsListenAddr(path))
 	}
 	_ = os.Remove(path)
 	return net.Listen("unix", path)
 }
 
+func windowsListenAddr(path string) string {
+	if strings.Contains(path, ":") {
+		return path
+	}
+	return "127.0.0.1:" + strings.TrimPrefix(path, ":")
+}
+
 func serveConn(c net.Conn, host Host) error {
+	_ = c.SetDeadline(time.Now().Add(DialTimeout))
 	sc := bufio.NewScanner(c)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
 			continue
 		}
+		_ = c.SetDeadline(time.Now().Add(DialTimeout))
 		resp := HandleLine(host, line)
 		if _, err := io.WriteString(c, resp+"\n"); err != nil {
 			return err
@@ -118,16 +148,16 @@ func ParseLine(line string) (Command, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
 	rest = strings.TrimSpace(rest)
 	switch name {
-	case "new_tab", "close_tab", "list_tabs", "get_text":
+	case CmdNewTab, CmdCloseTab, CmdListTabs, CmdGetText:
 		if rest != "" {
 			return Command{}, fmt.Errorf("%s takes no arguments", name)
 		}
 		return Command{Name: name}, nil
-	case "send_text", "send-text":
+	case CmdSendText, CmdSendTextA:
 		if rest == "" {
-			return Command{}, fmt.Errorf("send_text requires text")
+			return Command{}, fmt.Errorf("%s requires text", CmdSendText)
 		}
-		return Command{Name: "send_text", Arg: rest}, nil
+		return Command{Name: CmdSendText, Arg: rest}, nil
 	default:
 		return Command{}, fmt.Errorf("unknown command %q", name)
 	}
@@ -141,28 +171,28 @@ func HandleLine(host Host, line string) string {
 		return "ERR " + err.Error()
 	}
 	switch cmd.Name {
-	case "new_tab":
+	case CmdNewTab:
 		if err := host.NewTab(); err != nil {
 			return "ERR " + err.Error()
 		}
 		return "OK"
-	case "close_tab":
+	case CmdCloseTab:
 		if err := host.CloseTab(); err != nil {
 			return "ERR " + err.Error()
 		}
 		return "OK"
-	case "send_text":
+	case CmdSendText:
 		if err := host.SendText(cmd.Arg); err != nil {
 			return "ERR " + err.Error()
 		}
 		return "OK"
-	case "get_text":
+	case CmdGetText:
 		text, err := host.GetText()
 		if err != nil {
 			return "ERR " + err.Error()
 		}
 		return "OK " + strings.ReplaceAll(text, "\n", "\\n")
-	case "list_tabs":
+	case CmdListTabs:
 		tabs, err := host.ListTabs()
 		if err != nil {
 			return "ERR " + err.Error()
@@ -174,13 +204,15 @@ func HandleLine(host Host, line string) string {
 }
 
 // DialAndSend connects to path and sends one command line, returning the
-// response line (without trailing newline).
+// response line (without trailing newline). Connect and I/O are bounded
+// by DialTimeout.
 func DialAndSend(path, line string) (string, error) {
 	conn, err := dial(path)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(DialTimeout))
 	if _, err := io.WriteString(conn, line+"\n"); err != nil {
 		return "", err
 	}
@@ -196,11 +228,7 @@ func DialAndSend(path, line string) (string, error) {
 
 func dial(path string) (net.Conn, error) {
 	if runtime.GOOS == "windows" {
-		addr := path
-		if !strings.Contains(path, ":") {
-			addr = "127.0.0.1:" + strings.TrimPrefix(path, ":")
-		}
-		return net.Dial("tcp", addr)
+		return net.DialTimeout("tcp", windowsListenAddr(path), DialTimeout)
 	}
-	return net.Dial("unix", path)
+	return net.DialTimeout("unix", path, DialTimeout)
 }

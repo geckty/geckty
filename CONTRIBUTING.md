@@ -6,7 +6,7 @@ Thank you for your interest in contributing to geckty!
 
 ## Requirements
 
-- **Go 1.26+**
+- **Go 1.27+**
 - **golangci-lint** for code quality checks
 - Linux: X11/Wayland/Vulkan headers (`pkg-config`, `libx11-dev`, `libxkbcommon-dev`, `libwayland-dev`, `libgles2-mesa-dev`, `libegl1-mesa-dev`, `libvulkan-dev`) for gogpu's GPU backend
 - Windows: ConPTY (Windows 10 1809+ / Windows 11) for the shell session
@@ -182,7 +182,7 @@ type(scope): description
 | `term` | Terminal emulation core |
 | `vt` | VT/ANSI state machine wrapper (internal/vt) |
 | `pty` | PTY / ConPTY process management |
-| `ui` | gogpu window/rendering integration |
+| `ui` | gogpu/ui window + termview grid rendering |
 | `tabs` | Tab/session management |
 | `config` | Configuration |
 | `wasm` | WASM plugin runtime |
@@ -197,17 +197,28 @@ type(scope): description
 
 ```
 geckty/
-├── cmd/geckty/              # Application entry point
+├── cmd/geckty/               # Entry: config → ui.Backend.Run; also `geckty @`
+├── assets/                   # Embedded fonts, themes, icon (go:embed)
 ├── internal/
-│   ├── pty/                 # PTY (POSIX) / ConPTY (Windows) process management
-│   ├── vt/                  # VT/ANSI state machine wrapper (cy/pkg/emu)
-│   ├── session/              # PTY + VT state bundled per tab, UI-agnostic
-│   ├── protocol/             # OSC52, Kitty keyboard/graphics, paste, focus, mouse
-│   ├── ui/                   # gogpu window, event loop, grid rendering
-│   ├── config/                # TOML configuration
-│   └── plugin/                # WASM plugin host
-└── scripts/                  # Build/release scripts
+│   ├── pty/                  # POSIX PTY / Windows ConPTY
+│   ├── vt/ (+ emu/)          # VT/ANSI state (vendored cy/pkg/emu)
+│   ├── session/              # Tabs, splits, selection, scrollback, URLs
+│   ├── protocol/             # OSC52, Kitty kbd/gfx, paste, focus, mouse
+│   ├── rc/                   # Remote-control socket protocol
+│   ├── ui/
+│   │   ├── app/              # Window, input, CPU paint, PresentTexture
+│   │   ├── termview/         # Grid painter + fonts/glyph atlas
+│   │   ├── chrome/           # Tab bar geometry / glass
+│   │   ├── input/            # Keymap + EncodeKey/EncodeText
+│   │   ├── overlay/          # Search / hints models
+│   │   └── theme/            # Palette + UI tokens
+│   ├── config/               # TOML + theme discovery / hot-reload
+│   └── plugin/               # WASM plugin host (wazero)
+├── docs/                     # Architecture, config, roadmap, tech debt
+└── scripts/                  # Build / release helpers
 ```
+
+See [`docs/README.md`](docs/README.md) for the documentation index.
 
 ---
 

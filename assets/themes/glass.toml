@@ -1,0 +1,36 @@
+# Built-in "glass" theme — shipped in the binary via assets.Themes.
+# Copy to ~/.config/geckty/themes/<name>.toml to customize, then set
+# theme = "<name>" in config.toml. Inline [colors]/[ui] keys merge on top.
+
+[colors]
+foreground = "#f4f4f4"
+# Workspace / terminal grid fill (charcoal — not near-black).
+background = "#1d1f22"
+selection_background = "#525252"
+ansi = [
+  "#000000", "#c23621", "#25a250", "#caca33",
+  "#492ee1", "#d338d3", "#33bbc8", "#cbcccc",
+  "#818383", "#fc391f", "#31e722", "#eaec23",
+  "#5833ff", "#f935f8", "#14f0f0", "#e9ebeb",
+]
+
+[ui]
+visual_bell = "#ffffff55"
+scrollbar_track = "#ffffff28"
+scrollbar_thumb = "#ffffff70"
+command_border_enabled = false
+command_dot_enabled = false
+# Soft [ ] on submitted command lines (OSC 133). "off" to disable.
+content_brackets = "#ffffff55"
+
+[ui.glass]
+# Active/hover pills only (inactive tabs are plain text + separators).
+bar_lift = 0.06
+inactive = 0.05
+hover = 0.14
+active = 0.30
+drag = 0.22
+plus_hover = 0.08
+	rim = 0.70
+rim_alpha = 0.35
+fill_alpha = 0.78

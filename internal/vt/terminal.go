@@ -12,6 +12,10 @@ import (
 	"github.com/geckty/geckty/internal/vt/emu/geom"
 )
 
+// DirtyRows is a set of screen-row indices that need repainting since the
+// last TakePaintDirty. Shared across vt → termview → app paint signatures.
+type DirtyRows = map[int]bool
+
 // Terminal is a VT100+ state machine bound to a fixed-size cell grid.
 //
 // emu.Terminal's own View accessors (Cell, Cursor, Size, History, ...) do
@@ -44,7 +48,7 @@ type Terminal struct {
 
 // CommandState summarizes OSC 133 shell-integration state for a UI to
 // render a "command running" indicator against — e.g. the active tab's
-// pill in the tab bar (see internal/ui/gogpu/tabbar.go's paintTab).
+// pill in the tab bar (see internal/ui/app/tabbar.go's paintTab).
 //
 // Prompt/command positions for scroll_to_prompt and last-command-output
 // live separately in PromptMarks (AbsLine-anchored); this struct only
@@ -62,7 +66,7 @@ type CommandState struct {
 	// FinishedAt is when ExitCode was last set — a UI showing a brief
 	// success/failure flash (rather than a permanent badge every tab
 	// accumulates forever) compares this against time.Now() itself; see
-	// CommandIndicatorFade in internal/ui/gogpu/tabbar.go.
+	// CommandIndicatorFade in internal/ui/app/tabbar.go.
 	FinishedAt time.Time
 }
 
@@ -166,7 +170,7 @@ func (t *Terminal) TakeBell() bool {
 // change occurred) since the previous take, then clears those paint flags.
 // Callers use this for best-effort partial redraws; ScreenChanged or an
 // empty Lines map means a full paint is required.
-func (t *Terminal) TakePaintDirty() (lines map[int]bool, screenChanged bool) {
+func (t *Terminal) TakePaintDirty() (lines DirtyRows, screenChanged bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	src, ok := t.Terminal.(semanticPromptSource)
@@ -177,7 +181,7 @@ func (t *Terminal) TakePaintDirty() (lines map[int]bool, screenChanged bool) {
 	screenChanged = d.ScreenChanged()
 	if len(d.Lines) > 0 {
 		lines = d.Lines
-		d.Lines = make(map[int]bool)
+		d.Lines = make(DirtyRows)
 	}
 	d.Flag &^= emu.ChangedScreen
 	return lines, screenChanged

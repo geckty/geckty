@@ -7,6 +7,7 @@ package mouse
 import (
 	"fmt"
 
+	"github.com/geckty/geckty/internal/protocol"
 	"github.com/geckty/geckty/internal/vt/emu"
 )
 
@@ -19,20 +20,15 @@ const (
 	Down
 )
 
-// Modifiers is a toolkit-agnostic set of keyboard modifiers held during a
-// wheel event. internal/protocol/* packages don't import gpucontext (only
-// internal/ui/gogpu does) — callers translate from their UI toolkit's
-// modifier type into this one at the boundary (see internal/ui/gogpu/app.go).
-type Modifiers uint8
+// Modifiers is an alias for protocol.Modifiers (Shift/Alt/Ctrl).
+type Modifiers = protocol.Modifiers
 
-// Modifier bits.
+// Modifier bits re-exported for mouse call sites.
 const (
-	ModShift Modifiers = 1 << iota
-	ModAlt
-	ModCtrl
+	ModShift = protocol.ModShift
+	ModAlt   = protocol.ModAlt
+	ModCtrl  = protocol.ModCtrl
 )
-
-func (m Modifiers) contain(o Modifiers) bool { return m&o == o }
 
 // sgrWheelButton values per the SGR mouse protocol: 64 = wheel up, 65 =
 // wheel down, combined with the same modifier bits button-press events use.
@@ -185,13 +181,13 @@ func encodeLegacy(dir Direction, col, row int) []byte {
 
 func modifierBits(mods Modifiers) int {
 	var b int
-	if mods.contain(ModShift) {
+	if mods.Contain(ModShift) {
 		b |= 4
 	}
-	if mods.contain(ModAlt) {
+	if mods.Contain(ModAlt) {
 		b |= 8
 	}
-	if mods.contain(ModCtrl) {
+	if mods.Contain(ModCtrl) {
 		b |= 16
 	}
 	return b

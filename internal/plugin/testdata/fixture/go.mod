@@ -1,3 +1,3 @@
 module geckty-plugin-fixture
 
-go 1.26.3
+go 1.27.0

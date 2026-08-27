@@ -16,6 +16,7 @@ func Default() *Config {
 		Font:   FontConfig{Family: "", Size: 13, Bold: true, Italic: true},
 		UIFont: UIFontConfig{Family: "", Size: 12},
 		Colors: defaultColors(),
+		UI:     defaultUI(),
 		Shell: ShellConfig{
 			// See Integration's doc comment: on by default, only touches
 			// zsh/bash, and only when Command (empty here) is left at its
@@ -49,11 +50,28 @@ func Default() *Config {
 	}
 }
 
-// defaultColors returns geckty's built-in default color scheme (the
-// "glass" theme values). Chrome tab colors are left empty so the palette
+// defaultColors returns geckty's built-in default color scheme from the
+// embedded glass theme. Chrome tab colors are left empty so the palette
 // layer derives them with glass blends from Background/Foreground.
 func defaultColors() ColorsConfig {
-	return builtinThemes[glassThemeName]
+	tf, ok := loadEmbeddedTheme(defaultThemeName)
+	if !ok {
+		// Should never happen — glass.toml is go:embed'd. Keep a minimal
+		// fallback so Default() still returns something paintables.
+		return ColorsConfig{
+			Foreground:          "#f4f4f4",
+			Background:          "#1d1f22",
+			Selection:           "#525252",
+			SelectionBackground: "#525252",
+			ANSI: [16]string{
+				"#000000", "#c23621", "#25a250", "#caca33",
+				"#492ee1", "#d338d3", "#33bbc8", "#cbcccc",
+				"#818383", "#fc391f", "#31e722", "#eaec23",
+				"#5833ff", "#f935f8", "#14f0f0", "#e9ebeb",
+			},
+		}
+	}
+	return tf.Colors
 }
 
 // defaultKeybindings avoids plain Ctrl+T/Ctrl+W/Ctrl+C/Ctrl+V: those are
@@ -66,48 +84,48 @@ func defaultColors() ColorsConfig {
 func defaultKeybindings() []Keybinding {
 	if runtime.GOOS == "darwin" {
 		return []Keybinding{
-			{Key: "T", Mods: []string{"cmd"}, Action: "new_tab"},
-			{Key: "W", Mods: []string{"cmd"}, Action: "close_pane"},
-			{Key: "W", Mods: []string{"cmd", "shift"}, Action: "close_tab"},
-			{Key: "]", Mods: []string{"cmd", "shift"}, Action: "next_tab"},
-			{Key: "[", Mods: []string{"cmd", "shift"}, Action: "prev_tab"},
-			{Key: "C", Mods: []string{"cmd"}, Action: "copy"},
-			{Key: "V", Mods: []string{"cmd"}, Action: "paste"},
-			{Key: "F", Mods: []string{"cmd", "shift"}, Action: "search_scrollback"},
-			{Key: "E", Mods: []string{"cmd", "shift"}, Action: "open_url_hints"},
-			{Key: "H", Mods: []string{"ctrl", "shift"}, Action: "show_scrollback"},
-			{Key: "=", Mods: []string{"cmd"}, Action: "increase_font_size"},
-			{Key: "-", Mods: []string{"cmd"}, Action: "decrease_font_size"},
-			{Key: "0", Mods: []string{"cmd"}, Action: "reset_font_size"},
-			{Key: "D", Mods: []string{"cmd"}, Action: "split_vertical"},
-			{Key: "D", Mods: []string{"cmd", "shift"}, Action: "split_horizontal"},
-			{Key: "]", Mods: []string{"cmd", "alt"}, Action: "next_pane"},
-			{Key: "[", Mods: []string{"cmd", "alt"}, Action: "prev_pane"},
-			{Key: "Z", Mods: []string{"ctrl", "shift"}, Action: "scroll_to_prev_prompt"},
-			{Key: "X", Mods: []string{"ctrl", "shift"}, Action: "scroll_to_next_prompt"},
-			{Key: "G", Mods: []string{"ctrl", "shift"}, Action: "select_last_command_output"},
+			{Key: "T", Mods: []string{ModCmd}, Action: ActionNewTab},
+			{Key: "W", Mods: []string{ModCmd}, Action: ActionClosePane},
+			{Key: "W", Mods: []string{ModCmd, ModShift}, Action: ActionCloseTab},
+			{Key: "]", Mods: []string{ModCmd, ModShift}, Action: ActionNextTab},
+			{Key: "[", Mods: []string{ModCmd, ModShift}, Action: ActionPrevTab},
+			{Key: "C", Mods: []string{ModCmd}, Action: ActionCopy},
+			{Key: "V", Mods: []string{ModCmd}, Action: ActionPaste},
+			{Key: "F", Mods: []string{ModCmd, ModShift}, Action: ActionSearchScrollback},
+			{Key: "E", Mods: []string{ModCmd, ModShift}, Action: ActionOpenURLHints},
+			{Key: "H", Mods: []string{ModCtrl, ModShift}, Action: ActionShowScrollback},
+			{Key: "=", Mods: []string{ModCmd}, Action: ActionIncreaseFontSize},
+			{Key: "-", Mods: []string{ModCmd}, Action: ActionDecreaseFontSize},
+			{Key: "0", Mods: []string{ModCmd}, Action: ActionResetFontSize},
+			{Key: "D", Mods: []string{ModCmd}, Action: ActionSplitVertical},
+			{Key: "D", Mods: []string{ModCmd, ModShift}, Action: ActionSplitHorizontal},
+			{Key: "]", Mods: []string{ModCmd, ModAlt}, Action: ActionNextPane},
+			{Key: "[", Mods: []string{ModCmd, ModAlt}, Action: ActionPrevPane},
+			{Key: "Z", Mods: []string{ModCtrl, ModShift}, Action: ActionScrollToPrevPrompt},
+			{Key: "X", Mods: []string{ModCtrl, ModShift}, Action: ActionScrollToNextPrompt},
+			{Key: "G", Mods: []string{ModCtrl, ModShift}, Action: ActionSelectLastCmdOutput},
 		}
 	}
 	return []Keybinding{
-		{Key: "T", Mods: []string{"ctrl", "shift"}, Action: "new_tab"},
-		{Key: "W", Mods: []string{"ctrl", "shift"}, Action: "close_pane"},
-		{Key: "W", Mods: []string{"ctrl", "alt"}, Action: "close_tab"},
-		{Key: "Tab", Mods: []string{"ctrl"}, Action: "next_tab"},
-		{Key: "Tab", Mods: []string{"ctrl", "shift"}, Action: "prev_tab"},
-		{Key: "C", Mods: []string{"ctrl", "shift"}, Action: "copy"},
-		{Key: "V", Mods: []string{"ctrl", "shift"}, Action: "paste"},
-		{Key: "F", Mods: []string{"ctrl", "shift"}, Action: "search_scrollback"},
-		{Key: "E", Mods: []string{"ctrl", "shift"}, Action: "open_url_hints"},
-		{Key: "H", Mods: []string{"ctrl", "shift"}, Action: "show_scrollback"},
-		{Key: "=", Mods: []string{"ctrl"}, Action: "increase_font_size"},
-		{Key: "-", Mods: []string{"ctrl"}, Action: "decrease_font_size"},
-		{Key: "0", Mods: []string{"ctrl"}, Action: "reset_font_size"},
-		{Key: "D", Mods: []string{"ctrl", "shift"}, Action: "split_vertical"},
-		{Key: "D", Mods: []string{"ctrl", "alt"}, Action: "split_horizontal"},
-		{Key: "]", Mods: []string{"ctrl", "alt"}, Action: "next_pane"},
-		{Key: "[", Mods: []string{"ctrl", "alt"}, Action: "prev_pane"},
-		{Key: "Z", Mods: []string{"ctrl", "shift"}, Action: "scroll_to_prev_prompt"},
-		{Key: "X", Mods: []string{"ctrl", "shift"}, Action: "scroll_to_next_prompt"},
-		{Key: "G", Mods: []string{"ctrl", "shift"}, Action: "select_last_command_output"},
+		{Key: "T", Mods: []string{ModCtrl, ModShift}, Action: ActionNewTab},
+		{Key: "W", Mods: []string{ModCtrl, ModShift}, Action: ActionClosePane},
+		{Key: "W", Mods: []string{ModCtrl, ModAlt}, Action: ActionCloseTab},
+		{Key: "Tab", Mods: []string{ModCtrl}, Action: ActionNextTab},
+		{Key: "Tab", Mods: []string{ModCtrl, ModShift}, Action: ActionPrevTab},
+		{Key: "C", Mods: []string{ModCtrl, ModShift}, Action: ActionCopy},
+		{Key: "V", Mods: []string{ModCtrl, ModShift}, Action: ActionPaste},
+		{Key: "F", Mods: []string{ModCtrl, ModShift}, Action: ActionSearchScrollback},
+		{Key: "E", Mods: []string{ModCtrl, ModShift}, Action: ActionOpenURLHints},
+		{Key: "H", Mods: []string{ModCtrl, ModShift}, Action: ActionShowScrollback},
+		{Key: "=", Mods: []string{ModCtrl}, Action: ActionIncreaseFontSize},
+		{Key: "-", Mods: []string{ModCtrl}, Action: ActionDecreaseFontSize},
+		{Key: "0", Mods: []string{ModCtrl}, Action: ActionResetFontSize},
+		{Key: "D", Mods: []string{ModCtrl, ModShift}, Action: ActionSplitVertical},
+		{Key: "D", Mods: []string{ModCtrl, ModAlt}, Action: ActionSplitHorizontal},
+		{Key: "]", Mods: []string{ModCtrl, ModAlt}, Action: ActionNextPane},
+		{Key: "[", Mods: []string{ModCtrl, ModAlt}, Action: ActionPrevPane},
+		{Key: "Z", Mods: []string{ModCtrl, ModShift}, Action: ActionScrollToPrevPrompt},
+		{Key: "X", Mods: []string{ModCtrl, ModShift}, Action: ActionScrollToNextPrompt},
+		{Key: "G", Mods: []string{ModCtrl, ModShift}, Action: ActionSelectLastCmdOutput},
 	}
 }

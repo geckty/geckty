@@ -44,7 +44,7 @@ echo ""
 # 1. Go version (must match go.mod)
 log_info "Checking Go version..."
 GO_VERSION=$(go version | awk '{print $3}')
-REQUIRED_VERSION="go1.26"
+REQUIRED_VERSION="go1.27"
 if [[ "$GO_VERSION" < "$REQUIRED_VERSION" ]]; then
   log_error "Go $REQUIRED_VERSION+ required, found $GO_VERSION"
   ERRORS=$((ERRORS + 1))

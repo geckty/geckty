@@ -1,11 +1,18 @@
 // Package chrome holds geckty's tab-bar geometry and hit-testing —
-// toolkit-agnostic pure functions the UI backend (internal/ui/gogpu)
+// toolkit-agnostic pure functions the UI backend (internal/ui/app)
 // paints against.
 package chrome
 
 // Height is the tab bar's fixed height, in logical pixels. Callers reserve
 // this much space above the terminal grid.
 const Height = 32
+
+// Default geometry widths (logical px) shared by ComputeGeometry callers.
+const (
+	MinTabWidth    = 80
+	PlusWidth      = 36
+	CloseZoneWidth = 20
+)
 
 // Geometry is the tab strip's computed layout for one frame.
 type Geometry struct {

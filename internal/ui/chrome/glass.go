@@ -2,18 +2,50 @@ package chrome
 
 import (
 	"image/color"
+
+	"github.com/geckty/geckty/internal/config"
 )
 
-// Flat opaque glass-pill tab fills.
-// Inactive pills stay barely above the bar; active / hover / drag lift more.
-const (
-	GlassBarLift  = 0.08        // tab strip slightly above terminal bg
-	GlassInactive = 0.07        // inactive: just-visible dark pill
-	GlassHover    = 0.14        // hovered inactive
-	GlassActive   = 0.34        // active capsule (mid-grey)
-	GlassDrag     = 0.42        // dragged fill strength (alpha applied separately)
-	GlassDragA    = uint8(0x99) // ~60% — translucent frosted drag pin
+// Flat glass-pill factors — synced from config.Glass* (embedded TOML) at init.
+var (
+	GlassBarLift  float32
+	GlassInactive float32
+	GlassHover    float32
+	GlassActive   float32
+	GlassDrag     float32
+	GlassRim      float32
+	GlassDragA    = uint8(0x6a) // ~42% tint over warped underlay
+	GlassRimA     uint8
+	GlassFillA    uint8
 )
+
+func init() {
+	syncGlassFromConfig()
+}
+
+// syncGlassFromConfig copies config.Glass* into chrome float/alpha vars.
+// Called from init; exported for tests that mutate config.Glass*.
+func syncGlassFromConfig() {
+	GlassBarLift = float32(config.GlassBarLift)
+	GlassInactive = float32(config.GlassInactive)
+	GlassHover = float32(config.GlassHover)
+	GlassActive = float32(config.GlassActive)
+	GlassDrag = float32(config.GlassDrag)
+	GlassRim = float32(config.GlassRim)
+	GlassRimA = alphaByte(config.GlassRimAlpha)
+	GlassFillA = alphaByte(config.GlassFillAlpha)
+}
+
+func alphaByte(a float64) uint8 {
+	v := a*255 + 0.5
+	if v > 255 {
+		v = 255
+	}
+	if v < 0 {
+		v = 0
+	}
+	return uint8(v)
+}
 
 // GlassStyle returns the blend factor (for GlassFill) matching a tab's
 // current interaction state, in priority order dragging > active > hovering.

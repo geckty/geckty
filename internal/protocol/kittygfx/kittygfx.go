@@ -208,38 +208,49 @@ func (d *Decoder) Feed(payload []byte) FeedResult {
 		}
 	}
 
-	if cd.action == 'q' {
-		// Query: we don't retain a separate image store in the decoder,
-		// so answer OK (clients tolerate ENOENT for missing; OK is fine).
-		resp := d.okResponse(cd)
-		d.reset()
-		return FeedResult{Resp: resp}
-	}
-	if cd.action == 'd' {
-		result := FeedResult{Resp: d.okResponse(cd)}
-		sel := cd.deleteSel
-		if sel == 0 {
-			sel = 'a'
-		}
-		switch sel {
-		case 'i', 'I':
-			if cd.id != 0 {
-				result.DeleteID = cd.id
-			} else {
-				result.DeleteAll = true
-			}
-		default:
-			result.DeleteAll = true
-		}
-		d.reset()
-		return result
-	}
-
-	if cd.action != 'T' {
+	switch cd.action {
+	case 'q':
+		return d.handleQuery(cd)
+	case 'd':
+		return d.handleDelete(cd)
+	case 'T':
+		return d.handleTransmit(cd, b64)
+	default:
 		resp := d.errorResponse(cd, "only action=T (transmit+display) is supported")
 		d.reset()
 		return FeedResult{Resp: resp}
 	}
+}
+
+func (d *Decoder) handleQuery(cd controlData) FeedResult {
+	// Query: we don't retain a separate image store in the decoder,
+	// so answer OK (clients tolerate ENOENT for missing; OK is fine).
+	resp := d.okResponse(cd)
+	d.reset()
+	return FeedResult{Resp: resp}
+}
+
+func (d *Decoder) handleDelete(cd controlData) FeedResult {
+	result := FeedResult{Resp: d.okResponse(cd)}
+	sel := cd.deleteSel
+	if sel == 0 {
+		sel = 'a'
+	}
+	switch sel {
+	case 'i', 'I':
+		if cd.id != 0 {
+			result.DeleteID = cd.id
+		} else {
+			result.DeleteAll = true
+		}
+	default:
+		result.DeleteAll = true
+	}
+	d.reset()
+	return result
+}
+
+func (d *Decoder) handleTransmit(cd controlData, b64 []byte) FeedResult {
 	medium := cd.medium
 	if medium == 0 {
 		medium = 'd'

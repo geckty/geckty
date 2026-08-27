@@ -1,38 +1,49 @@
 # geckty
 
 A GUI terminal emulator written in Go, built on [gogpu](https://github.com/gogpu/gogpu)
-and [cy/pkg/emu](https://github.com/cfoust/cy) — in the spirit of kitty, Rio,
-and Alacritty.
+— in the spirit of kitty, Rio, and Alacritty.
 
-**Status:** early MVP under active development. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the project structure and how to
-build from source.
+**Status:** early MVP under active development.  
+**Go:** 1.27+
 
-## Features (target)
+## Features (MVP / in progress)
 
 - OSC 52 clipboard, bracketed paste, focus events
-- Kitty keyboard protocol, Kitty graphics protocol
-- Custom window chrome (titlebar, tabs) configurable via TOML
-- WASM plugin system
-- macOS, Windows (ConPTY), and Linux (X11 + Wayland)
+- Kitty keyboard protocol (partial), Kitty graphics protocol (basic)
+- Custom window chrome (glass tab bar) via TOML themes
+- Tabs, pane splits, scrollback search, URL open / hints
+- WASM plugin host (statusbar)
+- Remote control: `GECKTY_SOCKET` + `geckty @`
+- macOS, Windows (ConPTY), Linux (X11 + Wayland)
 
 ## Building
 
 ```bash
 go build ./cmd/geckty
+# or
+task build
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
 
 ## Configuration
 
 Copy [`config.example.toml`](config.example.toml) to
-`~/.config/geckty/config.toml`. Colors are free-form keys under `[colors]`
-(Kitty/Rio style). Optionally set `theme = "name"` to load
-`themes/name.toml` next to the config (or under `~/.config/geckty/themes/`);
-inline `[colors]` keys merge on top. See [`themes/glass.toml`](themes/glass.toml)
-for a theme-file example. Tab chrome colors (`active_tab_background`, …)
-are optional — unset keys keep the glass-derived look.
+`~/.config/geckty/config.toml`. Set `theme = "glass"` (or another name) to
+load a theme file; inline `[colors]` / `[ui]` merge on top. List themes with
+`geckty --list-themes`.
+
+## Documentation
+
+| Doc | Topic |
+|-----|-------|
+| [docs/README.md](docs/README.md) | Index |
+| [docs/architecture.md](docs/architecture.md) | Package layout & render path |
+| [docs/configuration.md](docs/configuration.md) | Config, fonts, themes |
+| [docs/remote-control.md](docs/remote-control.md) | `geckty @` |
+| [docs/plugins.md](docs/plugins.md) | WASM plugins |
+| [docs/roadmap.md](docs/roadmap.md) | Polish backlog |
+| [docs/tech-debt.md](docs/tech-debt.md) | Deferred Kitty parity |
 
 ## License
 
