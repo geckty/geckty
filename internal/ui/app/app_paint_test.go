@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/geckty/geckty/internal/session"
 	"github.com/geckty/geckty/internal/vt/emu"
 )
 
@@ -48,6 +49,27 @@ func TestSyncResizeBeforePaintResizesDuringLiveDragOnNonWindows(t *testing.T) {
 	wantC, wantR := gridSize(image.Pt(784, 552), 10, 20)
 	if sz.C != wantC || sz.R != wantR {
 		t.Fatalf("term after live-resize sync = %dx%d, want %dx%d", sz.C, sz.R, wantC, wantR)
+	}
+}
+
+func TestEnsurePaneGridResizesBeforePaint(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	s.painter.CellWidth = 10
+	s.painter.CellHeight = 20
+	s.cellW, s.cellH = 10, 20
+	active := s.mgr.Active()
+	if err := active.Resize(40, 12); err != nil {
+		t.Fatal(err)
+	}
+	leaf := session.PaneRect{Session: active, X: 8, Y: 40, W: 400, H: 500}
+	cols, rows := s.ensurePaneGrid(active, leaf)
+	wantC, wantR := gridSize(image.Pt(400, 500), 10, 20)
+	if cols != wantC || rows != wantR {
+		t.Fatalf("ensurePaneGrid = %dx%d, want %dx%d", cols, rows, wantC, wantR)
+	}
+	sz := active.Term.Size()
+	if sz.C != wantC || sz.R != wantR {
+		t.Fatalf("term after ensurePaneGrid = %dx%d, want %dx%d", sz.C, sz.R, wantC, wantR)
 	}
 }
 
