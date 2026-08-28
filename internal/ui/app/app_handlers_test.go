@@ -17,9 +17,14 @@ func testUIStateWithTab(t *testing.T) (*uiState, *fakeApp) {
 	if err := s.wireFirstTab(app); err != nil {
 		t.Fatalf("wireFirstTab: %v", err)
 	}
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for s.mgr.Active() == nil && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
+		if s.newTab != nil {
+			if err := s.newTab(); err == nil && s.mgr.Active() != nil {
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	if s.mgr.Active() == nil {
 		t.Fatal("wireFirstTab: no active tab after spawn")

@@ -40,11 +40,11 @@ func TestAdjustFontZoom(t *testing.T) {
 }
 
 func TestWindowSizeForGrid(t *testing.T) {
-	dipW, dipH := windowSizeForGrid(80, 24, 10, 20, 2, 8, TabBarHeightDp, true)
+	dipW, dipH := windowSizeForGrid(80, 24, 10, 20, 2, 8, true)
 	if dipW != 416 || dipH != 288 {
 		t.Fatalf("windowSizeForGrid = %d×%d DIP, want 416×288", dipW, dipH)
 	}
-	_, dipH = windowSizeForGrid(80, 24, 10, 20, 2, 8, TabBarHeightDp, false)
+	_, dipH = windowSizeForGrid(80, 24, 10, 20, 2, 8, false)
 	if dipH != 256 {
 		t.Fatalf("hidden tab bar height = %d, want 256", dipH)
 	}
@@ -55,7 +55,7 @@ func TestStageFontZoomWindowResize(t *testing.T) {
 	s.fontZoomResizeCols, s.fontZoomResizeRows = 80, 24
 	s.cellW, s.cellH, s.scale = 10, 20, 2
 	tabBarVisible := s.tabBarShowTabs() || s.tabBarShowPlus()
-	wantW, wantH := windowSizeForGrid(80, 24, 10, 20, 2, s.contentPadDp(), TabBarHeightDp, tabBarVisible)
+	wantW, wantH := windowSizeForGrid(80, 24, 10, 20, 2, s.contentPadDp(), tabBarVisible)
 	s.stageFontZoomWindowResize()
 	if s.fontZoomResizeCols != 0 || s.fontZoomResizeRows != 0 {
 		t.Fatalf("stage should clear resize grid, got %d×%d", s.fontZoomResizeCols, s.fontZoomResizeRows)

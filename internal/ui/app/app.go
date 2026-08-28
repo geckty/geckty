@@ -82,14 +82,14 @@ type uiState struct {
 
 	// Font/cell metrics, refreshed in onDraw when scale or configured size
 	// changes (also covers the tab bar's own smaller font).
-	scale              float64
-	fontSizeCurrent    float64
-	fontZoomDelta      float64 // runtime pt offset from cfg.Font.Size (Cmd/Ctrl+/-)
-	fontZoomResizeCols int     // >0: resize window on next frame to keep this grid
-	fontZoomResizeRows int
-	fontZoomPendingDIPW int    // staged logical size; applied from OnUpdate (main thread)
+	scale               float64
+	fontSizeCurrent     float64
+	fontZoomDelta       float64 // runtime pt offset from cfg.Font.Size (Cmd/Ctrl+/-)
+	fontZoomResizeCols  int     // >0: resize window on next frame to keep this grid
+	fontZoomResizeRows  int
+	fontZoomPendingDIPW int // staged logical size; applied from OnUpdate (main thread)
 	fontZoomPendingDIPH int
-	cellW, cellH, asc  int
+	cellW, cellH, asc   int
 
 	// Tab-bar interaction state.
 	tabDrag         tabDragState
@@ -802,7 +802,7 @@ func (s *uiState) adjustFontZoom(deltaPt float64) {
 
 // windowSizeForGrid returns the logical (DIP) window size that fits cols×rows
 // terminal cells with the current font metrics and chrome padding.
-func windowSizeForGrid(cols, rows int, cellW, cellH int, scale float64, padDp, tabBarDp int, tabBarVisible bool) (dipW, dipH int) {
+func windowSizeForGrid(cols, rows int, cellW, cellH int, scale float64, padDp int, tabBarVisible bool) (dipW, dipH int) {
 	if scale <= 0 {
 		scale = 1
 	}
@@ -821,7 +821,7 @@ func windowSizeForGrid(cols, rows int, cellW, cellH int, scale float64, padDp, t
 	padPx := dpToPx(padDp, scale)
 	tabBarPx := 0
 	if tabBarVisible {
-		tabBarPx = dpToPx(tabBarDp, scale)
+		tabBarPx = dpToPx(TabBarHeightDp, scale)
 	}
 	fw := cols*cellW + 2*padPx
 	fh := rows*cellH + tabBarPx + 2*padPx
@@ -844,7 +844,7 @@ func (s *uiState) stageFontZoomWindowResize() {
 	}
 	s.fontZoomResizeCols, s.fontZoomResizeRows = 0, 0
 	tabBarVisible := s.tabBarShowTabs() || s.tabBarShowPlus()
-	dipW, dipH := windowSizeForGrid(cols, rows, s.cellW, s.cellH, s.scale, s.contentPadDp(), TabBarHeightDp, tabBarVisible)
+	dipW, dipH := windowSizeForGrid(cols, rows, s.cellW, s.cellH, s.scale, s.contentPadDp(), tabBarVisible)
 	s.fontZoomPendingDIPW, s.fontZoomPendingDIPH = dipW, dipH
 }
 
