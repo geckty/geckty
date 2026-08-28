@@ -73,7 +73,7 @@ See annotated sections in `config.example.toml`:
 
 - `[shell]` — program / args / cwd
 - `[clipboard]` — OSC 52 read/write policy
-- `[scrollback]` — history lines
+- `[scrollback]` — history lines (default 10000)
 - `[cursor]`, `[window]`, plugins path, logging
 
 ## Plugins

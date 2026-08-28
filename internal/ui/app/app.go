@@ -304,11 +304,37 @@ func (s *uiState) resizeAllPanes() {
 				continue
 			}
 			cols, rows := gridSize(image.Pt(leaf.W, leaf.H), s.cellW, s.cellH)
+			sz := leaf.Session.Term.Size()
+			if cols == sz.C && rows == sz.R {
+				continue
+			}
 			if err := leaf.Session.Resize(cols, rows); err != nil {
 				slog.Warn("session resize failed", slog.Any("error", err))
 			}
 		}
 	})
+}
+
+// syncResizeBeforePaint resizes PTY/emu to match the window before painting
+// so the grid and shell stay aligned (avoids an empty band below the grid
+// while the debouncer catches up). Skipped during Windows live-resize drag.
+func (s *uiState) syncResizeBeforePaint(fw, fh, tabBarH, padPx, newCols, newRows int, inLiveResize, needFinalSync bool) {
+	if newCols != s.cols || newRows != s.rows {
+		s.cols, s.rows = newCols, newRows
+	}
+	if inLiveResize && !needFinalSync {
+		return
+	}
+	ox, oy := padPx, tabBarH+padPx
+	cw, ch := fw-2*padPx, fh-tabBarH-2*padPx
+	if cw < 1 {
+		cw = 1
+	}
+	if ch < 1 {
+		ch = 1
+	}
+	s.contentOX, s.contentOY, s.contentW, s.contentH = ox, oy, cw, ch
+	s.resizeAllPanes()
 }
 
 // wireFirstTab sets s.newTab (spawning s.cfg.ShellCommand() — read fresh
@@ -905,6 +931,7 @@ func (s *uiState) onDraw(ctx *gogpulib.Context) {
 	padPx := dpToPx(s.contentPadDp(), scale)
 	newCols, newRows := gridSize(image.Pt(fw-2*padPx, fh-tabBarH-2*padPx), s.cellW, s.cellH)
 
+	s.syncResizeBeforePaint(fw, fh, tabBarH, padPx, newCols, newRows, inLiveResize, needFinalSync)
 	s.paintFrame(fw, fh, tabBarH, padPx)
 	s.drainBells()
 	s.triggerResizeIfNeeded(newCols, newRows, inLiveResize, needFinalSync)
@@ -1022,11 +1049,13 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 			if leaf.Session == nil {
 				continue
 			}
+			paintCols, paintRows := gridSize(image.Pt(leaf.W, leaf.H), s.cellW, s.cellH)
+			raster.FillRect(s.frame, fw, leaf.X, leaf.Y, leaf.X+leaf.W, leaf.Y+leaf.H, bg)
 			rows := dirtyRows
 			if !useDirty || leaf.Session != focus {
 				rows = nil
 			}
-			s.painter.Paint(s.frame, fw, fh, leaf.X, leaf.Y, leaf.Session.Term, leaf.Session.ScrollOffset(), gridSelection(leaf.Session), gridPlacements(leaf.Session), s.blinkOn.Load(), rows)
+			s.painter.Paint(s.frame, fw, fh, leaf.X, leaf.Y, leaf.Session.Term, leaf.Session.ScrollOffset(), gridSelection(leaf.Session), gridPlacements(leaf.Session), s.blinkOn.Load(), rows, paintCols, paintRows)
 			s.paintContentBrackets(fw, leaf.X, leaf.Y, leaf.W, leaf.H, leaf.Session)
 			if leaf.Session == focus {
 				s.paintScrollBarOverlay(fw, fh, leaf.Y, leaf.Session, time.Now().Before(s.scrollBarUntil))

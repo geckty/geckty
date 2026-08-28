@@ -23,6 +23,35 @@ func TestCursorVisible(t *testing.T) {
 	}
 }
 
+func TestClearAltScrollbackOnAltExit(t *testing.T) {
+	term := New(WithSize(geom.Vec2{C: 10, R: 4}), WithHistoryLimit(100))
+	tr := term.(*terminal)
+	_, _ = term.Write([]byte(LineFeedMode))
+	for range 5 {
+		_, _ = term.Write([]byte("main\r\n"))
+	}
+	mainHist := len(tr.history)
+
+	_, _ = term.Write([]byte(EnterAltScreen))
+	_, _ = term.Write([]byte("altscreen-long-line-that-reflows\r\n"))
+	term.Resize(geom.Vec2{C: 4, R: 4})
+
+	if len(tr.history) == 0 && len(tr.altHistory) == 0 {
+		t.Fatal("expected some history on alt screen before exit")
+	}
+
+	_, _ = term.Write([]byte(ExitAltScreen))
+
+	if len(tr.altHistory) != 0 {
+		t.Fatalf("altHistory = %d lines after alt exit, want 0", len(tr.altHistory))
+	}
+	if len(tr.history) < mainHist {
+		t.Fatalf("main history shrunk from %d to %d after alt exit", mainHist, len(tr.history))
+	}
+	if term.IsAltMode() {
+		t.Fatal("should be back on main screen")
+	}
+}
 func TestIsAltModeToggle(t *testing.T) {
 	term := New()
 	if term.IsAltMode() {

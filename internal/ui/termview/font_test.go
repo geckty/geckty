@@ -82,16 +82,20 @@ func TestPlatformStyleCandidatesNonEmpty(t *testing.T) {
 	}
 }
 
-func TestLoadFontCandidatesIncludesEmbeddedFallback(t *testing.T) {
-	cands := loadFontCandidates("Nonexistent Font Family XYZ", RoleMono)
+func TestLoadFontCandidatePathsIncludesEmbeddedOnlyForEmptyFamily(t *testing.T) {
+	paths := loadFontCandidatePaths("", RoleMono)
 	for _, style := range []fontStyle{styleRegular, styleBold, styleItalic, styleBoldItalic} {
-		if len(cands[style]) == 0 {
-			t.Fatalf("style %v: expected candidates including embedded fallback", style)
+		if len(paths[style]) != 0 {
+			t.Fatalf("style %v: empty family should not scan platform paths, got %v", style, paths[style])
 		}
-		// Last entry is always the embedded font bytes.
-		last := cands[style][len(cands[style])-1]
-		if len(last) == 0 {
-			t.Fatalf("style %v: embedded fallback empty", style)
+	}
+}
+
+func TestLoadFontCandidatePathsNonEmptyFamilyIncludesPlatformPaths(t *testing.T) {
+	paths := loadFontCandidatePaths("Nonexistent Font Family XYZ", RoleMono)
+	for _, style := range []fontStyle{styleRegular, styleBold, styleItalic, styleBoldItalic} {
+		if len(paths[style]) == 0 {
+			t.Fatalf("style %v: expected platform candidate paths before embedded fallback", style)
 		}
 	}
 }

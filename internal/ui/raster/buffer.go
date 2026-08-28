@@ -97,7 +97,12 @@ func BlendRect(buf []byte, frameW, x0, y0, x1, y1 int, c color.RGBA) {
 // BlitGlyphClipped composites a glyph mask onto buf, discarding ink outside
 // [cx0,cx1)x[cy0,cy1).
 func BlitGlyphClipped(buf []byte, frameW, frameH int, dr image.Rectangle, mask *image.Alpha, maskp image.Point, fg color.RGBA, cx0, cy0, cx1, cy1 int) {
-	if frameW <= 0 || len(buf) == 0 {
+	BlitGlyphEntryClipped(buf, frameW, frameH, GlyphEntry{Mask: mask, MaskP: maskp, DrRel: dr}, fg, cx0, cy0, cx1, cy1)
+}
+
+// BlitGlyphEntryClipped composites e onto buf at its DrRel (caller adds cell origin).
+func BlitGlyphEntryClipped(buf []byte, frameW, frameH int, e GlyphEntry, fg color.RGBA, cx0, cy0, cx1, cy1 int) {
+	if frameW <= 0 || len(buf) == 0 || e.Mask == nil {
 		return
 	}
 	if cx0 < 0 {
@@ -115,22 +120,38 @@ func BlitGlyphClipped(buf []byte, frameW, frameH int, dr image.Rectangle, mask *
 	if cx0 >= cx1 || cy0 >= cy1 {
 		return
 	}
+	blitLegacyMaskClipped(buf, frameW, frameH, e.Mask, e.MaskP, e.DrRel, fg, cx0, cy0, cx1, cy1)
+}
+
+func blitLegacyMaskClipped(buf []byte, frameW, frameH int, mask *image.Alpha, maskp image.Point, dr image.Rectangle, fg color.RGBA, cx0, cy0, cx1, cy1 int) {
 	stride := frameW * 4
+	maskPix := mask.Pix
+	r, g, b := fg.R, fg.G, fg.B
 	for py := dr.Min.Y; py < dr.Max.Y; py++ {
-		if py < cy0 || py >= cy1 {
+		if py < cy0 || py >= cy1 || py < 0 || py >= frameH {
 			continue
 		}
+		rowOff := py * stride
+		myBase := py - dr.Min.Y + maskp.Y
 		for px := dr.Min.X; px < dr.Max.X; px++ {
-			if px < cx0 || px >= cx1 {
+			if px < cx0 || px >= cx1 || px < 0 || px >= frameW {
 				continue
 			}
 			mx := px - dr.Min.X + maskp.X
-			my := py - dr.Min.Y + maskp.Y
-			a := mask.AlphaAt(mx, my).A
+			mi := mask.PixOffset(mx, myBase)
+			if mi < 0 || mi >= len(maskPix) {
+				continue
+			}
+			a := maskPix[mi]
 			if a == 0 {
 				continue
 			}
-			BlendPixel(buf, py*stride+px*4, fg.R, fg.G, fg.B, a)
+			off := rowOff + px*4
+			if a == 255 {
+				buf[off], buf[off+1], buf[off+2], buf[off+3] = r, g, b, 255
+				continue
+			}
+			BlendPixel(buf, off, r, g, b, a)
 		}
 	}
 }
