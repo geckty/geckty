@@ -72,7 +72,7 @@ func TestPainterPaintRendersText(t *testing.T) {
 	_, _ = term.Write([]byte("Hi"))
 
 	buf := newBuf(100, 60)
-	ok := p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, nil, true, nil)
+	ok := p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, nil, true, nil, 0, 0)
 	if !ok {
 		t.Fatal("Paint should return true when it has valid cell metrics")
 	}
@@ -103,7 +103,7 @@ func TestPainterPaintZeroCellMetricsIsNoop(t *testing.T) {
 	p := &Painter{Palette: testPalette()}
 	term := vt.New(10, 3, io.Discard, nil, 0)
 	buf := newBuf(50, 50)
-	if p.Paint(buf, 50, 50, 0, 0, term, 0, Selection{}, nil, true, nil) {
+	if p.Paint(buf, 50, 50, 0, 0, term, 0, Selection{}, nil, true, nil, 0, 0) {
 		t.Fatal("Paint with CellWidth/CellHeight<=0 should return false")
 	}
 }
@@ -117,7 +117,7 @@ func TestPainterPaintSelectionHighlight(t *testing.T) {
 	sel := Selection{Active: true}
 	sel.Start.Col, sel.Start.Row = 2, 0
 	sel.End.Col, sel.End.Row = 4, 0
-	p.Paint(buf, 100, 60, 0, 0, term, 0, sel, nil, false, nil)
+	p.Paint(buf, 100, 60, 0, 0, term, 0, sel, nil, false, nil, 0, 0)
 
 	// A pixel within the selected column range (col 3, safely inside the
 	// selection, away from any glyph ink) should show the selection color
@@ -137,7 +137,7 @@ func TestPainterPaintCursorStyles(t *testing.T) {
 
 	blockTerm := vt.New(10, 3, io.Discard, nil, 0)
 	buf := newBuf(100, 60)
-	p.Paint(buf, 100, 60, 0, 0, blockTerm, 0, Selection{}, nil, true, nil)
+	p.Paint(buf, 100, 60, 0, 0, blockTerm, 0, Selection{}, nil, true, nil, 0, 0)
 	if got := pixelAt(buf, 100, 3, 6); got != fg {
 		t.Fatalf("block cursor center pixel = %v, want FG %v", got, fg)
 	}
@@ -145,7 +145,7 @@ func TestPainterPaintCursorStyles(t *testing.T) {
 	underlineTerm := vt.New(10, 3, io.Discard, nil, 0)
 	_, _ = underlineTerm.Write([]byte("\x1b[4 q")) // DECSCUSR: steady underline
 	buf2 := newBuf(100, 60)
-	p.Paint(buf2, 100, 60, 0, 0, underlineTerm, 0, Selection{}, nil, true, nil)
+	p.Paint(buf2, 100, 60, 0, 0, underlineTerm, 0, Selection{}, nil, true, nil, 0, 0)
 	if got := pixelAt(buf2, 100, 3, 0); got == fg {
 		t.Fatal("underline cursor should not paint the top of the cell")
 	}
@@ -156,7 +156,7 @@ func TestPainterPaintCursorStyles(t *testing.T) {
 	barTerm := vt.New(10, 3, io.Discard, nil, 0)
 	_, _ = barTerm.Write([]byte("\x1b[6 q")) // DECSCUSR: steady bar
 	buf3 := newBuf(100, 60)
-	p.Paint(buf3, 100, 60, 0, 0, barTerm, 0, Selection{}, nil, true, nil)
+	p.Paint(buf3, 100, 60, 0, 0, barTerm, 0, Selection{}, nil, true, nil, 0, 0)
 	if got := pixelAt(buf3, 100, 0, 6); got != fg {
 		t.Fatalf("bar cursor should paint the left edge of the cell, got %v", got)
 	}
@@ -174,7 +174,7 @@ func TestPainterPaintScrollOffsetSkipsCursorButPaintsSelection(t *testing.T) {
 	sel.Start.Col, sel.Start.Row = 2, 0
 	sel.End.Col, sel.End.Row = 4, 0
 	// scrollOffset != 0 must skip the cursor but still paint selection.
-	if !p.Paint(buf, 100, 60, 0, 0, term, 1, sel, nil, true, nil) {
+	if !p.Paint(buf, 100, 60, 0, 0, term, 1, sel, nil, true, nil, 0, 0) {
 		t.Fatal("Paint should still return true with a nonzero scrollOffset")
 	}
 	x := 3*p.CellWidth + 1
@@ -202,7 +202,7 @@ func TestPainterPaintPlacementsSkipsOutOfViewport(t *testing.T) {
 	}
 	// Must not panic on the nil-image / out-of-range entries, and should
 	// paint the valid one.
-	p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, placements, false, nil)
+	p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, placements, false, nil, 0, 0)
 	if got := pixelAt(buf, 100, 1, 1); got.R != 0xff {
 		t.Fatalf("placement pixel = %v, want opaque white from the placed image", got)
 	}
@@ -289,7 +289,7 @@ func TestPainterPaintDimInvisibleStrikethrough(t *testing.T) {
 	_, _ = term.Write([]byte("\x1b[2;9mA\x1b[0;8mB"))
 
 	buf := newBuf(100, 60)
-	if !p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, nil, false, nil) {
+	if !p.Paint(buf, 100, 60, 0, 0, term, 0, Selection{}, nil, false, nil, 0, 0) {
 		t.Fatal("Paint should succeed")
 	}
 
@@ -314,5 +314,22 @@ func TestPainterPaintDimInvisibleStrikethrough(t *testing.T) {
 	if got := pixelAt(buf, 100, x, y); got != ToRGBA(p.Palette.Background) {
 		// Invisible may still leave bg fill only; non-bg means glyph leaked.
 		t.Fatalf("invisible cell pixel = %v, want background", got)
+	}
+}
+
+func TestPainterPaintFillsExpandedGrid(t *testing.T) {
+	p := testPainter()
+	term := vt.New(10, 5, io.Discard, nil, 0)
+	_, _ = term.Write([]byte("hello"))
+
+	buf := newBuf(100, 200)
+	bg := ToRGBA(p.Palette.Background)
+	p.Paint(buf, 100, 200, 0, 0, term, 0, Selection{}, nil, true, nil, 10, 12)
+
+	// Row 11 is below the terminal's 5 rows but inside the 12-row paint grid —
+	// must be cleared to background, not stale frame bytes.
+	y := 11 * p.CellHeight
+	if pixelAt(buf, 100, 0, y) != bg {
+		t.Fatal("expanded paint grid should clear rows below term.Size().R")
 	}
 }

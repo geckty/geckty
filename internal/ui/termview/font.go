@@ -95,58 +95,47 @@ func (b FontBundle) face(bold, italic bool) (font.Face, int) {
 }
 
 var (
-	fontCandidatesOnce  sync.Once
-	fontCandidatesCache map[fontStyle][][]byte
-	fontCandidatesFor   string
-	fontCandidatesRole  FontRole
+	fontPathsOnce  sync.Once
+	fontPathsCache map[fontStyle][]string
+	fontPathsFor   string
+	fontPathsRole  FontRole
 )
 
-// systemFontCandidates returns, per style, font file bytes to try in
-// preference order: a configured family (best-effort filename match — see
-// the package's known limitation versus a full system-font matching),
-// then the platform default for role, then role's embedded
-// bundled font (assets.Fonts) as a universal last resort that's always
-// present regardless of style.
-func systemFontCandidates(configuredFamily string, role FontRole) map[fontStyle][][]byte {
-	fontCandidatesOnce.Do(func() {
-		fontCandidatesFor, fontCandidatesRole = configuredFamily, role
-		fontCandidatesCache = loadFontCandidates(configuredFamily, role)
+// fontCandidatePaths returns filesystem paths to try for each style, in
+// preference order. An empty configuredFamily uses embedded bundled fonts
+// only (no platform scan). "monospace" skips the family guess and uses the
+// platform default for role. The embedded fallback is opened separately —
+// it is not duplicated in the path list.
+func fontCandidatePaths(configuredFamily string, role FontRole) map[fontStyle][]string {
+	fontPathsOnce.Do(func() {
+		fontPathsFor, fontPathsRole = configuredFamily, role
+		fontPathsCache = loadFontCandidatePaths(configuredFamily, role)
 	})
-	if fontCandidatesFor != configuredFamily || fontCandidatesRole != role {
-		// Config changed since the cache was built (e.g. in tests, or a
-		// hot-reloaded font family/UI font) — rebuild.
-		fontCandidatesFor, fontCandidatesRole = configuredFamily, role
-		fontCandidatesCache = loadFontCandidates(configuredFamily, role)
+	if fontPathsFor != configuredFamily || fontPathsRole != role {
+		fontPathsFor, fontPathsRole = configuredFamily, role
+		fontPathsCache = loadFontCandidatePaths(configuredFamily, role)
 	}
-	return fontCandidatesCache
+	return fontPathsCache
 }
 
-func loadFontCandidates(configuredFamily string, role FontRole) map[fontStyle][][]byte {
-	home, _ := os.UserHomeDir()
-	out := make(map[fontStyle][][]byte, 4)
+func loadFontCandidatePaths(configuredFamily string, role FontRole) map[fontStyle][]string {
+	family := strings.TrimSpace(configuredFamily)
+	out := make(map[fontStyle][]string, 4)
 	for _, style := range []fontStyle{styleRegular, styleBold, styleItalic, styleBoldItalic} {
+		if family == "" {
+			// Default config: embedded IBM Plex / PT Sans only — avoids
+			// loading Menlo/Consolas/etc. into RAM when the user did not
+			// request a custom family.
+			out[style] = nil
+			continue
+		}
 		var paths []string
-		if f := strings.TrimSpace(configuredFamily); f != "" && !strings.EqualFold(f, "monospace") {
-			paths = append(paths, configuredFamilyStylePaths(f, home, style)...)
+		if !strings.EqualFold(family, "monospace") {
+			home, _ := os.UserHomeDir()
+			paths = append(paths, configuredFamilyStylePaths(family, home, style)...)
 		}
 		paths = append(paths, platformStyleCandidates(style, role)...)
-
-		var data [][]byte
-		for _, p := range paths {
-			if p == "" {
-				continue
-			}
-			b, err := os.ReadFile(p) //nolint:gosec // G304: hardcoded system/user font directories
-			if err != nil || len(b) == 0 {
-				continue
-			}
-			data = append(data, b)
-		}
-		// The embedded bundled font is always available as the universal
-		// fallback, so every style resolves to *something* even when
-		// nothing on disk matched.
-		data = append(data, embeddedFontData(role, style))
-		out[style] = data
+		out[style] = paths
 	}
 	return out
 }
@@ -262,15 +251,21 @@ func configuredFamilyStylePaths(family, home string, style fontStyle) []string {
 	return out
 }
 
-func openFace(data []byte, size, dpi float64) (font.Face, error) {
-	return openFaceStyle(data, size, dpi, styleRegular)
+func openFace(data []byte, size, dpi float64, role FontRole) (font.Face, error) {
+	return openFaceStyle(data, size, dpi, styleRegular, role)
 }
 
-func openFaceStyle(data []byte, size, dpi float64, style fontStyle) (font.Face, error) {
+func openFaceStyle(data []byte, size, dpi float64, style fontStyle, role FontRole) (font.Face, error) {
+	hinting := font.HintingNone
+	if role == RoleMono {
+		// Full grid hinting: crisp stems on HiDPI like JetBrains Terminal /
+		// iTerm — HintingNone looked soft/thin next to IDE chrome.
+		hinting = font.HintingFull
+	}
 	opts := &opentype.FaceOptions{
 		Size:    size,
 		DPI:     dpi,
-		Hinting: font.HintingNone,
+		Hinting: hinting,
 	}
 	if col, err := opentype.ParseCollection(data); err == nil && col.NumFonts() > 0 {
 		idx := pickCollectionIndex(data, style, col.NumFonts())
@@ -352,42 +347,51 @@ func collectionSubfamilyScore(sub string, want []string, style fontStyle) int {
 	return 0
 }
 
-func openBestFaceStyle(candidates [][]byte, size, dpi float64, style fontStyle) font.Face {
-	for _, data := range candidates {
-		if f, err := openFaceStyle(data, size, dpi, style); err == nil && f != nil {
+// openBestFaceStyle tries each path in order, reading font bytes transiently
+// (not retained after the face opens) before falling back to the embedded
+// bundled font for role/style.
+func openBestFaceStyle(paths []string, role FontRole, style fontStyle, size, dpi float64) font.Face {
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		b, err := os.ReadFile(p) //nolint:gosec // G304: hardcoded system/user font directories
+		if err != nil || len(b) == 0 {
+			continue
+		}
+		if f, err := openFaceStyle(b, size, dpi, style, role); err == nil && f != nil {
 			return f
 		}
+	}
+	if f, err := openFaceStyle(embeddedFontData(role, style), size, dpi, style, role); err == nil && f != nil {
+		return f
 	}
 	return nil
 }
 
 // LoadFontBundle loads role's four style faces (falling back through
 // configured family -> platform default -> embedded bundled font per style,
-// see systemFontCandidates) and measures cell metrics from the Regular
+// see fontCandidatePaths) and measures cell metrics from the Regular
 // face. configuredFamily is the relevant FontConfig/UIFontConfig.Family
 // (empty selects the embedded bundled font directly; "monospace" skips
 // straight to the platform default search).
 func LoadFontBundle(configuredFamily string, size, scaleFactor float64, role FontRole) FontBundle {
 	dpi := 72.0 * scaleFactor
-	candidates := systemFontCandidates(configuredFamily, role)
+	paths := fontCandidatePaths(configuredFamily, role)
 
-	b := FontBundle{
-		Regular:    openBestFaceStyle(candidates[styleRegular], size, dpi, styleRegular),
-		Bold:       openBestFaceStyle(candidates[styleBold], size, dpi, styleBold),
-		Italic:     openBestFaceStyle(candidates[styleItalic], size, dpi, styleItalic),
-		BoldItalic: openBestFaceStyle(candidates[styleBoldItalic], size, dpi, styleBoldItalic),
-	}
+	b := FontBundle{}
+
+	b.Regular = openBestFaceStyle(paths[styleRegular], role, styleRegular, size, dpi)
+	b.Bold = openBestFaceStyle(paths[styleBold], role, styleBold, size, dpi)
+	b.Italic = openBestFaceStyle(paths[styleItalic], role, styleItalic, size, dpi)
+	b.BoldItalic = openBestFaceStyle(paths[styleBoldItalic], role, styleBoldItalic, size, dpi)
 	if b.Regular == nil {
-		// Can't happen in practice (the embedded bundled font is always a
-		// candidate and ships in the binary), but fail loudly rather than
-		// paint nothing if it ever does.
-		f, err := openFaceStyle(embeddedFontData(role, styleRegular), size, dpi, styleRegular)
+		f, err := openFaceStyle(embeddedFontData(role, styleRegular), size, dpi, styleRegular, role)
 		if err != nil {
 			panic("geckty: failed to load embedded fallback font: " + err.Error())
 		}
 		b.Regular = f
 	}
-
 	m := b.Regular.Metrics()
 	b.CellH = m.Height.Ceil()
 	b.Ascent = m.Ascent.Ceil()
@@ -396,6 +400,7 @@ func LoadFontBundle(configuredFamily string, size, scaleFactor float64, role Fon
 	} else {
 		b.CellW = b.CellH / 2
 	}
+
 	return b
 }
 
@@ -442,7 +447,7 @@ func LoadSymbolFallbackFace(size, scaleFactor float64) font.Face {
 		if err != nil || len(b) == 0 {
 			continue
 		}
-		if f, err := openFace(b, size, dpi); err == nil && f != nil {
+		if f, err := openFace(b, size, dpi, RoleMono); err == nil && f != nil {
 			return f
 		}
 	}

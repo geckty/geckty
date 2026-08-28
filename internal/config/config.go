@@ -75,7 +75,7 @@ type ScrollbackConfig struct {
 	// Lines caps physical history lines kept per tab. 0 means unlimited
 	// (legacy). Default 10000. Applied to newly opened tabs only.
 	Lines int `toml:"lines"`
-	// WheelMultiplier scales pointer-wheel scroll line counts. Default 1.
+	// WheelMultiplier scales pointer-wheel scroll line counts. Default 3.
 	WheelMultiplier float64 `toml:"wheel_multiplier"`
 }
 

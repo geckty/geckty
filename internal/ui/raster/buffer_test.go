@@ -115,3 +115,17 @@ func TestBlitGlyphClippedDrawsForeground(t *testing.T) {
 		t.Fatalf("glyph pixel = %v", got)
 	}
 }
+
+func TestBlitGlyphClippedAntialiasedBlend(t *testing.T) {
+	buf := newBuf(4, 4)
+	FillRect(buf, 4, 0, 0, 4, 4, color.RGBA{R: 0, G: 0, B: 0, A: 255})
+	mask := image.NewAlpha(image.Rect(0, 0, 1, 1))
+	mask.SetAlpha(0, 0, color.Alpha{A: 128})
+	dr := image.Rect(1, 1, 2, 2)
+	fg := color.RGBA{R: 200, G: 0, B: 0, A: 255}
+	BlitGlyphClipped(buf, 4, 4, dr, mask, image.Point{}, fg, 0, 0, 4, 4)
+	got := pixelAt(buf, 4, 1, 1)
+	if got.R == 0 || got.R == 200 {
+		t.Fatalf("expected blended red, got %v", got)
+	}
+}

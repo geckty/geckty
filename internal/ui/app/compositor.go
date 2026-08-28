@@ -110,12 +110,14 @@ func (s *uiState) paintForCompositor(scale float64, fw, fh int) *image.RGBA {
 
 	tabBarH := s.tabBarHeightPx()
 	padPx := dpToPx(s.contentPadDp(), scale)
-	newCols, newRows := gridSize(image.Pt(fw-2*padPx, fh-tabBarH-2*padPx), s.cellW, s.cellH)
+	cellW, cellH := s.gridCellMetrics()
+	newCols, newRows := gridSize(image.Pt(fw-2*padPx, fh-tabBarH-2*padPx), cellW, cellH)
 
-	s.paintFrame(fw, fh, tabBarH, padPx)
-	s.drainBells()
 	inLiveResize := s.app.InSizeMove()
 	needFinalSync := s.consumeLiveResizeSync(inLiveResize)
+	s.syncResizeBeforePaint(fw, fh, tabBarH, padPx, newCols, newRows, inLiveResize, needFinalSync)
+	s.paintFrame(fw, fh, tabBarH, padPx)
+	s.drainBells()
 	s.triggerResizeIfNeeded(newCols, newRows, inLiveResize, needFinalSync)
 	s.drainClipboardWrites()
 	s.stageFontZoomWindowResize()

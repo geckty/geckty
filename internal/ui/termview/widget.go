@@ -68,7 +68,7 @@ func (w *TerminalWidget) Draw(_ widget.Context, canvas widget.Canvas) {
 		w.image.Pix[i+3] = bg.A
 	}
 	w.Painter.Paint(w.image.Pix, width, height, 0, 0, w.Session.Term,
-		w.Session.ScrollOffset(), w.Selection, w.Placements, blinkOn, nil)
+		w.Session.ScrollOffset(), w.Selection, w.Placements, blinkOn, nil, 0, 0)
 	canvas.DrawImage(w.image, bounds.Min)
 }
 

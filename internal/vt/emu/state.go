@@ -493,13 +493,28 @@ func (t *State) moveTo(x, y int) {
 }
 
 func (t *State) swapScreen() {
+	wasAlt := IsAltMode(t.mode)
 	t.screen, t.altScreen = t.altScreen, t.screen
 	t.history, t.altHistory = t.altHistory, t.history
 	t.historyOffset, t.altHistoryOffset = t.altHistoryOffset, t.historyOffset
 	t.wrapped, t.altWrapped = t.altWrapped, t.wrapped
 	t.keyState, t.altKeyState = t.altKeyState, t.keyState
 	t.mode ^= ModeAltScreen
+	if wasAlt {
+		// Returning to the main screen: drop the alternate buffer's
+		// scrollback (vim/htop resize reflow) so it does not linger in RAM.
+		t.clearAltScrollback()
+	}
 	t.dirtyAll()
+}
+
+// clearAltScrollback releases scrollback retained for the alternate screen.
+// Main-screen history parked in altHistory during an alt-screen session is
+// swapped back into history before this runs.
+func (t *State) clearAltScrollback() {
+	t.altHistory = nil
+	t.altHistoryOffset = 0
+	t.altWrapped = false
 }
 
 func (t *State) dirtyAll() {

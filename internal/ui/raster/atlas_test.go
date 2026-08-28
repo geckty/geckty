@@ -1,6 +1,7 @@
 package raster
 
 import (
+	"image"
 	"testing"
 
 	"golang.org/x/image/font/basicfont"
@@ -46,6 +47,20 @@ func TestGlyphAtlasGetCachesEntry(t *testing.T) {
 	}
 	if e1.Mask != e2.Mask {
 		t.Fatal("second Get('A') should return the identical cached mask, not re-rasterize")
+	}
+}
+
+func TestGlyphAtlasLRUEvictsOldest(t *testing.T) {
+	a := NewGlyphAtlas(basicfont.Face7x13, basicfont.Face7x13.Metrics().Ascent.Ceil())
+	for i := 1; i <= glyphAtlasMaxEntries; i++ {
+		r := rune(i)
+		a.entries[r] = GlyphEntry{Mask: image.NewAlpha(image.Rect(0, 0, 1, 1))}
+		a.lru = append(a.lru, r)
+	}
+	// Inserting a new rune evicts the oldest (rune(1)); glyph need not rasterize.
+	_, _ = a.Get(rune(glyphAtlasMaxEntries + 1))
+	if _, ok := a.entries[1]; ok {
+		t.Fatal("oldest entry rune(1) should have been evicted")
 	}
 }
 

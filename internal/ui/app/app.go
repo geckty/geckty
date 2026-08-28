@@ -91,6 +91,11 @@ type uiState struct {
 	fontZoomPendingDIPH int
 	cellW, cellH, asc   int
 
+	// lastPaintFH/Rows suppress partial dirty repaint while the window or
+	// grid is changing (resize drag — especially growing downward).
+	lastPaintFH   int
+	lastPaintRows int
+
 	// Tab-bar interaction state.
 	tabDrag         tabDragState
 	tabScrollX      int
@@ -292,10 +297,50 @@ func (s *uiState) wireSessionManager(gapp gpuApp) {
 	})
 }
 
+// gridCellMetrics returns the cell pixel size used for layout and paint.
+// Painter metrics win when set so row/col counts match paintRow placement.
+func (s *uiState) gridCellMetrics() (cellW, cellH int) {
+	cellW, cellH = s.cellW, s.cellH
+	if s.painter != nil {
+		if s.painter.CellWidth > 0 {
+			cellW = s.painter.CellWidth
+		}
+		if s.painter.CellHeight > 0 {
+			cellH = s.painter.CellHeight
+		}
+	}
+	return cellW, cellH
+}
+
+func (s *uiState) paneGridSize(leaf session.PaneRect) (cols, rows int) {
+	cw, ch := s.gridCellMetrics()
+	return gridSize(image.Pt(leaf.W, leaf.H), cw, ch)
+}
+
+// ensurePaneGrid resizes session to the leaf's pixel rect before paint.
+func (s *uiState) ensurePaneGrid(sess *session.Session, leaf session.PaneRect) (cols, rows int) {
+	if sess == nil {
+		return 0, 0
+	}
+	cols, rows = s.paneGridSize(leaf)
+	sz := sess.Term.Size()
+	if cols == sz.C && rows == sz.R {
+		return cols, rows
+	}
+	if err := sess.Resize(cols, rows); err != nil {
+		slog.Warn("session resize failed", slog.Any("error", err))
+	}
+	return cols, rows
+}
+
 // resizeAllPanes applies the current content rectangle to every tab's
 // pane tree, resizing each leaf session to its cell grid.
 func (s *uiState) resizeAllPanes() {
-	if s.mgr == nil || s.cellW <= 0 || s.cellH <= 0 || s.contentW <= 0 || s.contentH <= 0 {
+	if s.mgr == nil || s.contentW <= 0 || s.contentH <= 0 {
+		return
+	}
+	cw, ch := s.gridCellMetrics()
+	if cw <= 0 || ch <= 0 {
 		return
 	}
 	s.mgr.EachTabLayout(s.contentOX, s.contentOY, s.contentW, s.contentH, func(leaves []session.PaneRect) {
@@ -303,12 +348,39 @@ func (s *uiState) resizeAllPanes() {
 			if leaf.Session == nil {
 				continue
 			}
-			cols, rows := gridSize(image.Pt(leaf.W, leaf.H), s.cellW, s.cellH)
+			cols, rows := gridSize(image.Pt(leaf.W, leaf.H), cw, ch)
+			sz := leaf.Session.Term.Size()
+			if cols == sz.C && rows == sz.R {
+				continue
+			}
 			if err := leaf.Session.Resize(cols, rows); err != nil {
 				slog.Warn("session resize failed", slog.Any("error", err))
 			}
 		}
 	})
+}
+
+// syncResizeBeforePaint resizes PTY/emu to match the window before painting
+// so the grid and shell stay aligned (avoids an empty band below the grid
+// while the debouncer catches up). Only skipped during Windows live-resize
+// drag — macOS must sync every frame or the grid outruns the terminal.
+func (s *uiState) syncResizeBeforePaint(fw, fh, tabBarH, padPx, newCols, newRows int, inLiveResize, needFinalSync bool) {
+	if newCols != s.cols || newRows != s.rows {
+		s.cols, s.rows = newCols, newRows
+	}
+	if runtime.GOOS == osWindows && inLiveResize && !needFinalSync {
+		return
+	}
+	ox, oy := padPx, tabBarH+padPx
+	cw, ch := fw-2*padPx, fh-tabBarH-2*padPx
+	if cw < 1 {
+		cw = 1
+	}
+	if ch < 1 {
+		ch = 1
+	}
+	s.contentOX, s.contentOY, s.contentW, s.contentH = ox, oy, cw, ch
+	s.resizeAllPanes()
 }
 
 // wireFirstTab sets s.newTab (spawning s.cfg.ShellCommand() — read fresh
@@ -903,8 +975,10 @@ func (s *uiState) onDraw(ctx *gogpulib.Context) {
 
 	tabBarH := s.tabBarHeightPx()
 	padPx := dpToPx(s.contentPadDp(), scale)
-	newCols, newRows := gridSize(image.Pt(fw-2*padPx, fh-tabBarH-2*padPx), s.cellW, s.cellH)
+	cellW, cellH := s.gridCellMetrics()
+	newCols, newRows := gridSize(image.Pt(fw-2*padPx, fh-tabBarH-2*padPx), cellW, cellH)
 
+	s.syncResizeBeforePaint(fw, fh, tabBarH, padPx, newCols, newRows, inLiveResize, needFinalSync)
 	s.paintFrame(fw, fh, tabBarH, padPx)
 	s.drainBells()
 	s.triggerResizeIfNeeded(newCols, newRows, inLiveResize, needFinalSync)
@@ -992,9 +1066,17 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 
 	var dirtyRows vt.DirtyRows
 	useDirty := false
+	gridMismatch := false
+	gridGrowing := false
 	if ok && len(leaves) == 1 && leaves[0].Session != nil && leaves[0].Session.ScrollOffset() == 0 {
-		lines, screenCh := leaves[0].Session.Term.TakePaintDirty()
-		if prevSame && !screenCh && len(lines) > 0 {
+		leaf := leaves[0]
+		paintCols, paintRows := s.paneGridSize(leaf)
+		sz := leaf.Session.Term.Size()
+		gridMismatch = paintCols != sz.C || paintRows != sz.R
+		gridGrowing = paintRows > s.lastPaintRows || fh > s.lastPaintFH
+		lines, screenCh := leaf.Session.Term.TakePaintDirty()
+		if prevSame && !screenCh && !gridMismatch && !gridGrowing &&
+			!s.app.InSizeMove() && len(lines) > 0 {
 			useDirty = true
 			dirtyRows = lines
 		}
@@ -1022,11 +1104,21 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 			if leaf.Session == nil {
 				continue
 			}
+			paintCols, paintRows := s.ensurePaneGrid(leaf.Session, leaf)
+			raster.FillRect(s.frame, fw, leaf.X, leaf.Y, leaf.X+leaf.W, leaf.Y+leaf.H, bg)
 			rows := dirtyRows
 			if !useDirty || leaf.Session != focus {
 				rows = nil
 			}
-			s.painter.Paint(s.frame, fw, fh, leaf.X, leaf.Y, leaf.Session.Term, leaf.Session.ScrollOffset(), gridSelection(leaf.Session), gridPlacements(leaf.Session), s.blinkOn.Load(), rows)
+			s.painter.Paint(s.frame, fw, fh, leaf.X, leaf.Y, leaf.Session.Term, leaf.Session.ScrollOffset(), gridSelection(leaf.Session), gridPlacements(leaf.Session), s.blinkOn.Load(), rows, paintCols, paintRows)
+			_, cellH := s.gridCellMetrics()
+			gridBottom := leaf.Y + paintRows*cellH
+			if gridBottom < leaf.Y+leaf.H {
+				raster.FillRect(s.frame, fw, leaf.X, gridBottom, leaf.X+leaf.W, leaf.Y+leaf.H, bg)
+			}
+			if paintRows > s.lastPaintRows {
+				s.lastPaintRows = paintRows
+			}
 			s.paintContentBrackets(fw, leaf.X, leaf.Y, leaf.W, leaf.H, leaf.Session)
 			if leaf.Session == focus {
 				s.paintScrollBarOverlay(fw, fh, leaf.Y, leaf.Session, time.Now().Before(s.scrollBarUntil))
@@ -1048,6 +1140,7 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 	s.paintHintsOverlay(fw, fh)
 	s.paintConfirmCloseOverlay(fw, fh, padPx)
 	s.paintVisualBell(fw, fh)
+	s.lastPaintFH = fh
 }
 
 func (s *uiState) drainBells() {

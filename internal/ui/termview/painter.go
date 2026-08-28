@@ -129,15 +129,11 @@ func (p *Painter) glyphEntryFor(bold, italic bool, r rune) (raster.GlyphEntry, b
 	return raster.GlyphEntry{}, false
 }
 
-// Paint fills the grid's rect (originX,originY)-(originX+cols*CellWidth,
-// originY+rows*CellHeight) in buf, draws each cell, the cursor (when
-// blinkOn), and any Kitty-graphics placements. buf is RGBA8, stride =
-// frameW*4. Returns true if any pixel was written.
-//
-// When dirtyRows is non-nil, only those view rows are cleared and repainted
-// (caller must not have wiped the whole grid); the cursor is always
-// refreshed. Pass nil for a full grid paint.
-func (p *Painter) Paint(buf []byte, frameW, frameH, originX, originY int, term *vt.Terminal, scrollOffset int, sel Selection, placements []Placement, blinkOn bool, dirtyRows vt.DirtyRows) bool {
+// Paint fills the grid's rect (originX,originY)-(originX+paintCols*CellWidth,
+// originY+paintRows*CellHeight) in buf. When gridCols/gridRows are > 0 they
+// define the paint area (may exceed term.Size() while a resize is in flight);
+// otherwise term.Size() is used.
+func (p *Painter) Paint(buf []byte, frameW, frameH, originX, originY int, term *vt.Terminal, scrollOffset int, sel Selection, placements []Placement, blinkOn bool, dirtyRows vt.DirtyRows, gridCols, gridRows int) bool {
 	term.RLock()
 	defer term.RUnlock()
 
@@ -147,8 +143,16 @@ func (p *Painter) Paint(buf []byte, frameW, frameH, originX, originY int, term *
 	p.ensureAtlas()
 
 	sz := term.Size()
-	gridW := sz.C * p.CellWidth
-	gridH := sz.R * p.CellHeight
+	paintCols := sz.C
+	paintRows := sz.R
+	if gridCols > 0 {
+		paintCols = gridCols
+	}
+	if gridRows > 0 {
+		paintRows = gridRows
+	}
+	gridW := paintCols * p.CellWidth
+	gridH := paintRows * p.CellHeight
 	bg := ToRGBA(p.Palette.Background)
 
 	if dirtyRows == nil {
@@ -158,23 +162,25 @@ func (p *Painter) Paint(buf []byte, frameW, frameH, originX, originY int, term *
 		// clipped absolute History()+Screen() bounds to the visible window),
 		// so it paints whether or not we're scrolled into history.
 		if sel.Active {
-			p.paintSelection(buf, frameW, sel, sz.C, originX, originY)
+			p.paintSelection(buf, frameW, sel, paintCols, originX, originY)
 		}
 
 		lines, top := viewport(term, sz.R, scrollOffset)
-		for row, line := range lines {
+		for row := 0; row < paintRows; row++ {
 			y := originY + row*p.CellHeight
 			if y >= originY+gridH || y >= frameH {
 				break
 			}
-			p.paintRow(buf, frameW, frameH, line, sz.C, originX, y, sel, row)
+			if row < len(lines) {
+				p.paintRow(buf, frameW, frameH, lines[row], paintCols, originX, y, sel, row)
+			}
 		}
 
-		p.paintPlacements(buf, frameW, frameH, placements, top, sz.R, originX, originY, gridW)
+		p.paintPlacements(buf, frameW, frameH, placements, top, paintRows, originX, originY, gridW)
 	} else {
 		lines, top := viewport(term, sz.R, scrollOffset)
 		for row := range dirtyRows {
-			if row < 0 || row >= len(lines) || row >= sz.R {
+			if row < 0 || row >= len(lines) || row >= paintRows {
 				continue
 			}
 			y := originY + row*p.CellHeight
@@ -184,7 +190,7 @@ func (p *Painter) Paint(buf []byte, frameW, frameH, originX, originY int, term *
 			raster.FillRect(buf, frameW, originX, y, originX+gridW, y+p.CellHeight, bg)
 			if sel.Active {
 				// Re-paint selection highlight for this row only.
-				colStart, colEnd, ok := selectionColRange(sel, row, sz.C)
+				colStart, colEnd, ok := selectionColRange(sel, row, paintCols)
 				if ok {
 					highlight := p.Palette.Selection
 					if highlight.A == 0 {
@@ -193,7 +199,7 @@ func (p *Painter) Paint(buf []byte, frameW, frameH, originX, originY int, term *
 					raster.FillRect(buf, frameW, originX+colStart*p.CellWidth, y, originX+colEnd*p.CellWidth, y+p.CellHeight, ToRGBA(highlight))
 				}
 			}
-			p.paintRow(buf, frameW, frameH, lines[row], sz.C, originX, y, sel, row)
+			p.paintRow(buf, frameW, frameH, lines[row], paintCols, originX, y, sel, row)
 		}
 		_ = top // placements skipped on partial paint (best-effort)
 	}
@@ -355,8 +361,9 @@ func (p *Painter) paintRow(buf []byte, frameW, frameH int, line emu.Line, cols, 
 
 		if !st.invisible && g.Char != ' ' {
 			if e, ok := p.glyphEntryFor(st.bold, st.italic, g.Char); ok {
-				dr := e.DrRel.Add(image.Pt(x0, y))
-				raster.BlitGlyphClipped(buf, frameW, frameH, dr, e.Mask, e.MaskP, fgColor, x0-glyphBleedPx, y, x1+glyphBleedPx, y1)
+				draw := e
+				draw.DrRel = e.DrRel.Add(image.Pt(x0, y))
+				raster.BlitGlyphEntryClipped(buf, frameW, frameH, draw, fgColor, x0-glyphBleedPx, y, x1+glyphBleedPx, y1)
 			}
 		}
 

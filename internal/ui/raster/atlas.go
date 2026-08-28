@@ -8,7 +8,7 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-const glyphAtlasMaxEntries = 4096
+const glyphAtlasMaxEntries = 1024
 
 // GlyphEntry holds a single cached glyph rasterization.
 // DrRel is the destination rect produced by face.Glyph at the canonical dot
@@ -26,6 +26,7 @@ type GlyphAtlas struct {
 	cAscent  int
 	embolden bool
 	entries  map[rune]GlyphEntry
+	lru      []rune // oldest first; cap glyphAtlasMaxEntries
 }
 
 // NewGlyphAtlas builds an atlas for face at the given cell ascent.
@@ -51,13 +52,33 @@ func (a *GlyphAtlas) Valid(face font.Face, cAscent int) bool {
 	return a != nil && a.face == face && a.cAscent == cAscent
 }
 
+func (a *GlyphAtlas) touch(r rune) {
+	for i, x := range a.lru {
+		if x == r {
+			a.lru = append(a.lru[:i], a.lru[i+1:]...)
+			break
+		}
+	}
+	a.lru = append(a.lru, r)
+}
+
+func (a *GlyphAtlas) evictOldest() {
+	if len(a.lru) == 0 {
+		return
+	}
+	r := a.lru[0]
+	a.lru = a.lru[1:]
+	delete(a.entries, r)
+}
+
 // Get returns the cached entry for r, populating it on first access.
 func (a *GlyphAtlas) Get(r rune) (GlyphEntry, bool) {
 	if e, ok := a.entries[r]; ok {
+		a.touch(r)
 		return e, true
 	}
 	if len(a.entries) >= glyphAtlasMaxEntries {
-		a.entries = make(map[rune]GlyphEntry, 256)
+		a.evictOldest()
 	}
 	if a.face == nil {
 		return GlyphEntry{}, false
@@ -84,6 +105,7 @@ func (a *GlyphAtlas) Get(r rune) (GlyphEntry, bool) {
 		fattenAlphaMask(cached, 1)
 	}
 	a.entries[r] = e
+	a.lru = append(a.lru, r)
 	return e, true
 }
 

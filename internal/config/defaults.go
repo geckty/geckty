@@ -32,7 +32,7 @@ func Default() *Config {
 		},
 		Scrollback: ScrollbackConfig{
 			Lines:           10000,
-			WheelMultiplier: 1,
+			WheelMultiplier: 3,
 		},
 		Cursor: CursorConfig{
 			Shape:      "block",

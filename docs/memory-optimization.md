@@ -108,10 +108,10 @@ See `docs/rendering-migration.md`, `docs/upstream/gogpu-ui-custom-raster-rfc.md`
 
 ### Phase A — Quick wins (geckty-only, ~1–2 weeks)
 
-- [ ] B1, B2 — font path when `family=""`
-- [ ] A4 — alt-history cleanup on alt-screen exit
-- [ ] A1 — default scrollback review + docs
-- [ ] D1 — atlas LRU 1024
+- [x] B1, B2 — font path when `family=""`
+- [x] A4 — alt-history cleanup on alt-screen exit
+- [ ] A1 — default scrollback (kept at 10000; tune via config for lower RAM)
+- [x] D1 — atlas LRU 1024
 - [ ] Baseline measurement script
 
 **Expected:** 450 → **~320–360 MB** idle (1 tab, empty scrollback)
@@ -125,7 +125,7 @@ See `docs/rendering-migration.md`, `docs/upstream/gogpu-ui-custom-raster-rfc.md`
 
 ### Phase C — Upstream gogpu (parallel)
 
-- [ ] Subrect upload RFC → implementation
+- [ ] Subrect upload RFC → implementation ([gogpu-texture-subrect-rfc.md](upstream/gogpu-texture-subrect-rfc.md))
 - [ ] Staging pool + GPUStats in CI
 
 ### Phase D — Structural (~1–2 months)
