@@ -317,12 +317,13 @@ func (s *uiState) resizeAllPanes() {
 
 // syncResizeBeforePaint resizes PTY/emu to match the window before painting
 // so the grid and shell stay aligned (avoids an empty band below the grid
-// while the debouncer catches up). Skipped during Windows live-resize drag.
+// while the debouncer catches up). Only skipped during Windows live-resize
+// drag — macOS must sync every frame or the grid outruns the terminal.
 func (s *uiState) syncResizeBeforePaint(fw, fh, tabBarH, padPx, newCols, newRows int, inLiveResize, needFinalSync bool) {
 	if newCols != s.cols || newRows != s.rows {
 		s.cols, s.rows = newCols, newRows
 	}
-	if inLiveResize && !needFinalSync {
+	if runtime.GOOS == osWindows && inLiveResize && !needFinalSync {
 		return
 	}
 	ox, oy := padPx, tabBarH+padPx
@@ -1019,9 +1020,14 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 
 	var dirtyRows vt.DirtyRows
 	useDirty := false
+	gridMismatch := false
 	if ok && len(leaves) == 1 && leaves[0].Session != nil && leaves[0].Session.ScrollOffset() == 0 {
-		lines, screenCh := leaves[0].Session.Term.TakePaintDirty()
-		if prevSame && !screenCh && len(lines) > 0 {
+		leaf := leaves[0]
+		paintCols, paintRows := gridSize(image.Pt(leaf.W, leaf.H), s.cellW, s.cellH)
+		sz := leaf.Session.Term.Size()
+		gridMismatch = paintCols != sz.C || paintRows != sz.R
+		lines, screenCh := leaf.Session.Term.TakePaintDirty()
+		if prevSame && !screenCh && !gridMismatch && len(lines) > 0 {
 			useDirty = true
 			dirtyRows = lines
 		}

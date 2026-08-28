@@ -10,9 +10,10 @@ func benchLegacyBlit(b *testing.B, maskW, maskH int) {
 	buf := make([]byte, 640*480*4)
 	mask := image.NewAlpha(image.Rect(0, 0, maskW, maskH))
 	for i := range mask.Pix {
-		if i%3 == 0 {
+		switch i % 3 {
+		case 0:
 			mask.Pix[i] = 255
-		} else if i%3 == 1 {
+		case 1:
 			mask.Pix[i] = 128
 		}
 	}

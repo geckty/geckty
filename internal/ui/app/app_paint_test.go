@@ -3,6 +3,7 @@ package app
 import (
 	"image"
 	"image/color"
+	"runtime"
 	"testing"
 	"time"
 
@@ -28,6 +29,45 @@ func TestConsumeLiveResizeSync(t *testing.T) {
 
 	if s.consumeLiveResizeSync(false) {
 		t.Fatal("with no pending sync, needFinalSync should be false")
+	}
+}
+
+func TestSyncResizeBeforePaintResizesDuringLiveDragOnNonWindows(t *testing.T) {
+	if runtime.GOOS == osWindows {
+		t.Skip("Windows defers PTY sync until live-resize ends")
+	}
+	s, _ := testUIStateWithTab(t)
+	s.cellW, s.cellH = 10, 20
+	active := s.mgr.Active()
+	if err := active.Resize(40, 12); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate macOS live-resize: inLiveResize=true, needFinalSync=false.
+	s.syncResizeBeforePaint(800, 600, 32, 8, 78, 27, true, false)
+	sz := active.Term.Size()
+	wantC, wantR := gridSize(image.Pt(784, 552), 10, 20)
+	if sz.C != wantC || sz.R != wantR {
+		t.Fatalf("term after live-resize sync = %dx%d, want %dx%d", sz.C, sz.R, wantC, wantR)
+	}
+}
+
+func TestPaintFrameGridMismatchForcesFullRepaint(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	s.cellW, s.cellH = 10, 20
+	active := s.mgr.Active()
+	_, _ = active.Term.Write([]byte("x"))
+	if err := active.Resize(40, 12); err != nil {
+		t.Fatal(err)
+	}
+	// Mark only row 0 dirty — would use partial paint if grid matched term.
+	active.Term.Parse([]byte("y"))
+	s.frame = make([]byte, 200*400*4)
+	s.frameW, s.frameH = 200, 400
+	// Leaf tall enough for more rows than the 12-row terminal.
+	s.paintFrame(200, 400, 32, 8)
+	y := 15 * s.cellH
+	if pixelAt(s.frame, 200, 5, y) != toRGBA(s.thm.Palette.Background) {
+		t.Fatal("expanded grid row below term should be cleared to background")
 	}
 }
 
