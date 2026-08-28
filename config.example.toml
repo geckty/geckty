@@ -9,7 +9,7 @@ width = 1000
 height = 650
 # Content inset around the terminal grid, in logical dp (hot-reloaded).
 padding = 8
-# Reserved: ask before quitting with multiple tabs (UI wiring TBD).
+# Reserved: ask before quitting with multiple tabs (wired: Enter confirms, Esc cancels).
 # confirm_close = false
 
 [font]
@@ -18,7 +18,7 @@ padding = 8
 # looks the same on every platform regardless of what's installed. Set to
 # "monospace" to use the platform's own default monospace font instead
 # (Menlo on macOS, Consolas on Windows, DejaVu Sans Mono on Linux — best
-# effort, see internal/ui/gogpu/font.go), or to a specific font name to
+# effort, see internal/ui/termview/font.go), or to a specific font name to
 # look it up by filename in the usual system font directories.
 family = ""
 size = 13
@@ -28,6 +28,7 @@ size = 13
 # Setting either to false keeps that attribute's text at regular weight.
 bold = true
 italic = true
+# ligatures = false  # reserved; requires HarfBuzz (not yet wired)
 
 [ui_font]
 # The tab bar's own font — independent of [font] since chrome text (tab
@@ -36,9 +37,9 @@ italic = true
 family = ""
 size = 12
 
-# theme loads themes/<name>.toml next to this file (or under the geckty
-# config dir), then merges any inline [colors] keys on top — Kitty/Rio
-# style. Built-in: "glass". Omit theme and set [colors] freely instead.
+# theme = "glass" loads themes/<name>.toml from the user config dir, then
+# embedded assets/themes/. Inline [colors] and [ui] keys merge on top —
+# Kitty/Rio style. List themes: geckty --list-themes. Built-in: "glass".
 # theme = "glass"
 
 [colors]
@@ -63,6 +64,37 @@ ansi = [
 # tab_bar_background = "#222428"
 # hover_tab_background = "#3a3c40"
 # plus_button_background = "#2a2c30"
+
+[ui]
+# UX chrome tokens (hex #rrggbb or #rrggbbaa). Empty semantic slots fall
+# back to ANSI indices (url/search/hints/pane/command → 12/11/11/12/6|2|1).
+visual_bell = "#ffffff55"
+scrollbar_track = "#ffffff28"
+scrollbar_thumb = "#ffffff70"
+# url_underline = ""
+# search_match = ""
+# hint_label_bg = ""
+# hint_label_fg = ""
+# pane_focus_border = ""
+# command_running = ""
+# command_success = ""
+# command_failed = ""
+command_border_enabled = false
+# Tiny OSC 133 status dot on tabs (off = quieter chrome).
+command_dot_enabled = false
+# Soft [ ] marks on submitted command lines (OSC 133;C). "off" to disable.
+content_brackets = "#ffffff55"
+
+[ui.glass]
+bar_lift = 0.06
+inactive = 0.05
+hover = 0.14
+active = 0.30
+drag = 0.22
+plus_hover = 0.08
+rim = 0.70
+rim_alpha = 0.35
+fill_alpha = 0.78
 
 [shell]
 # Leave unset to use $SHELL (POSIX) or the best available PowerShell/cmd
@@ -145,7 +177,12 @@ hot_reload = true
 #
 # key: a gpucontext.Key name ("A".."Z", "0".."9", "Tab", "[", "]", ...)
 # mods: any of "ctrl", "shift", "alt", "cmd" (cmd is macOS-only)
-# action: "new_tab", "close_tab", "next_tab", "prev_tab", "copy", "paste"
+# action: "new_tab", "close_tab", "close_pane", "next_tab", "prev_tab",
+#         "next_pane", "prev_pane", "split_vertical", "split_horizontal",
+#         "scroll_to_prev_prompt", "scroll_to_next_prompt",
+#         "select_last_command_output", "copy", "paste", "search_scrollback",
+#         "open_url_hints", "show_scrollback",
+#         "increase_font_size", "decrease_font_size", "reset_font_size"
 #
 # Defaults avoid plain Ctrl+T/Ctrl+W/Ctrl+C/Ctrl+V: those are shell
 # readline/job-control bindings (transpose-char, delete-word-backward,
@@ -160,6 +197,11 @@ hot_reload = true
 # [[keybindings]]
 # key = "W"
 # mods = ["cmd"]
+# action = "close_pane"
+#
+# [[keybindings]]
+# key = "W"
+# mods = ["cmd", "shift"]
 # action = "close_tab"
 #
 # [[keybindings]]
@@ -182,5 +224,71 @@ hot_reload = true
 # mods = ["cmd"]
 # action = "paste"
 #
-# Other platforms default to Ctrl+Shift+T/W/C/V and Ctrl+(Shift+)Tab
-# instead.
+# [[keybindings]]
+# key = "F"
+# mods = ["cmd", "shift"]
+# action = "search_scrollback"
+#
+# [[keybindings]]
+# key = "E"
+# mods = ["cmd", "shift"]
+# action = "open_url_hints"
+#
+# [[keybindings]]
+# key = "H"
+# mods = ["ctrl", "shift"]
+# action = "show_scrollback"
+#
+# [[keybindings]]
+# key = "="
+# mods = ["cmd"]
+# action = "increase_font_size"
+#
+# [[keybindings]]
+# key = "-"
+# mods = ["cmd"]
+# action = "decrease_font_size"
+#
+# [[keybindings]]
+# key = "0"
+# mods = ["cmd"]
+# action = "reset_font_size"
+#
+# [[keybindings]]
+# key = "D"
+# mods = ["cmd"]
+# action = "split_vertical"
+#
+# [[keybindings]]
+# key = "D"
+# mods = ["cmd", "shift"]
+# action = "split_horizontal"
+#
+# [[keybindings]]
+# key = "]"
+# mods = ["cmd", "alt"]
+# action = "next_pane"
+#
+# [[keybindings]]
+# key = "["
+# mods = ["cmd", "alt"]
+# action = "prev_pane"
+#
+# [[keybindings]]
+# key = "Z"
+# mods = ["ctrl", "shift"]
+# action = "scroll_to_prev_prompt"
+#
+# [[keybindings]]
+# key = "X"
+# mods = ["ctrl", "shift"]
+# action = "scroll_to_next_prompt"
+#
+# [[keybindings]]
+# key = "G"
+# mods = ["ctrl", "shift"]
+# action = "select_last_command_output"
+#
+# Other platforms default to Ctrl+Shift for tabs/copy/paste/split_vertical,
+# Ctrl+Alt for split_horizontal/panes/close_tab, and Ctrl+(Shift+)Tab.
+# Prompt navigation uses Ctrl+Shift+Z/X/G on every platform (Kitty-compatible).

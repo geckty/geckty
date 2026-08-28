@@ -29,13 +29,14 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/geckty/geckty/internal/protocol"
 	"github.com/geckty/geckty/internal/vt/emu"
 )
 
 // Key identifies a physical key, as a plain string. This package doesn't
-// import gpucontext (only internal/ui/gogpu does); callers map
+// import gpucontext (only internal/ui/app does); callers map
 // gpucontext.Key values to these constants themselves (see
-// internal/ui/gogpu/kitty.go's kittyFunctionalKeys), so the glyphs below
+// internal/ui/app/kitty.go's kittyFunctionalKeys), so the glyphs below
 // are opaque wire-vocabulary literals, not references to gpucontext
 // constants.
 type Key string
@@ -110,36 +111,32 @@ var legacyBytes = map[Key]byte{
 	KeyDeleteBackward: 0x7f,
 }
 
-// Modifiers is a toolkit-agnostic modifier set, matching
-// internal/protocol/mouse's pattern — protocol packages don't import
-// gpucontext (only internal/ui/gogpu does).
-type Modifiers uint8
+// Modifiers is an alias for protocol.Modifiers (includes Super for Kitty).
+type Modifiers = protocol.Modifiers
 
-// Modifier bits.
+// Modifier bits re-exported for kittykbd call sites.
 const (
-	ModShift Modifiers = 1 << iota
-	ModAlt
-	ModCtrl
-	ModSuper
+	ModShift = protocol.ModShift
+	ModAlt   = protocol.ModAlt
+	ModCtrl  = protocol.ModCtrl
+	ModSuper = protocol.ModSuper
 )
-
-func (m Modifiers) contain(o Modifiers) bool { return m&o == o }
 
 // kittyModifierBits per the spec: shift=1, alt=2, ctrl=4, super=8 (hyper and
 // meta exist in the spec but have no equivalent in gpucontext.Modifiers, so
 // are never set here).
 func kittyModifierBits(mods Modifiers) int {
 	var b int
-	if mods.contain(ModShift) {
+	if mods.Contain(ModShift) {
 		b |= 1
 	}
-	if mods.contain(ModAlt) {
+	if mods.Contain(ModAlt) {
 		b |= 2
 	}
-	if mods.contain(ModCtrl) {
+	if mods.Contain(ModCtrl) {
 		b |= 4
 	}
-	if mods.contain(ModSuper) {
+	if mods.Contain(ModSuper) {
 		b |= 8
 	}
 	return b
@@ -205,13 +202,13 @@ func Encode(flags emu.KeyProtocol, ev Event) (out []byte, ok bool) {
 	// ambiguous and should keep going through the toolkit's text-input
 	// callback as normal text, which correctly reflects case/layout in a
 	// way this package can't (gpucontext.Key is purely positional — see
-	// internal/ui/gogpu/keymap.go's doc comment — with no case or layout
+	// internal/ui/app/keymap.go's doc comment — with no case or layout
 	// information of its own).
 	r := []rune(string(ev.Key))
 	if len(r) != 1 {
 		return nil, false
 	}
-	if !ev.Modifiers.contain(ModCtrl) && !ev.Modifiers.contain(ModAlt) {
+	if !ev.Modifiers.Contain(ModCtrl) && !ev.Modifiers.Contain(ModAlt) {
 		return nil, false
 	}
 	code := int(unicode.ToLower(r[0]))

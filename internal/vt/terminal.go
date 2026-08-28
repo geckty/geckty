@@ -12,6 +12,10 @@ import (
 	"github.com/geckty/geckty/internal/vt/emu/geom"
 )
 
+// DirtyRows is a set of screen-row indices that need repainting since the
+// last TakePaintDirty. Shared across vt → termview → app paint signatures.
+type DirtyRows = map[int]bool
+
 // Terminal is a VT100+ state machine bound to a fixed-size cell grid.
 //
 // emu.Terminal's own View accessors (Cell, Cursor, Size, History, ...) do
@@ -31,19 +35,24 @@ type Terminal struct {
 	// CommandState), folded in by Parse from emu's per-write event log
 	// each call — see foldSemanticPrompts.
 	cmd CommandState
+
+	// promptMarks retains OSC 133 A/C/D positions as AbsLine anchors so
+	// the UI can scroll between prompts and select last-command output
+	// without modifying vendored emu history cells.
+	promptMarks      []PromptMark
+	promptHistOffset int
+
+	// bellPending is set when BEL was seen since the last TakeBell.
+	bellPending bool
 }
 
 // CommandState summarizes OSC 133 shell-integration state for a UI to
 // render a "command running" indicator against — e.g. the active tab's
-// pill in the tab bar (see internal/ui/gogpu/tabbar.go's paintTab).
+// pill in the tab bar (see internal/ui/app/tabbar.go's paintTab).
 //
-// Deliberately doesn't track *which row* the command started on: OSC 133
-// positions are screen-relative at the moment they're received, and would
-// need continuous adjustment as output scrolls the screen to stay
-// meaningful — a "mark" durable across scrollback is a real terminal
-// feature (iTerm2, WezTerm) but needs metadata attached to history lines
-// in the vendored emu package (internal/vt/emu/NOTICE.md's "no behavioral
-// changes" policy for that vendored copy), not something to bolt on here.
+// Prompt/command positions for scroll_to_prompt and last-command-output
+// live separately in PromptMarks (AbsLine-anchored); this struct only
+// tracks the live Running/ExitCode flash state.
 type CommandState struct {
 	// Running is true from OSC 133;C (command executed) until the
 	// matching OSC 133;D (command finished).
@@ -57,7 +66,7 @@ type CommandState struct {
 	// FinishedAt is when ExitCode was last set — a UI showing a brief
 	// success/failure flash (rather than a permanent badge every tab
 	// accumulates forever) compares this against time.Now() itself; see
-	// CommandIndicatorFade in internal/ui/gogpu/tabbar.go.
+	// CommandIndicatorFade in internal/ui/app/tabbar.go.
 	FinishedAt time.Time
 }
 
@@ -90,6 +99,7 @@ func (t *Terminal) Parse(p []byte) int {
 	defer t.mu.Unlock()
 	n := t.Terminal.Parse(p)
 	t.foldSemanticPrompts()
+	t.foldBell()
 	return n
 }
 
@@ -104,8 +114,9 @@ type semanticPromptSource interface {
 // foldSemanticPrompts drains emu's per-write OSC 133 event log (nothing
 // else in geckty currently consumes emu.Dirty, so this is also the only
 // place that needs to clear it — see emu.Dirty.Reset's doc comment) into
-// cmd's durable Running/ExitCode state. Called with t.mu held.
+// cmd's durable Running/ExitCode state and promptMarks. Called with t.mu held.
 func (t *Terminal) foldSemanticPrompts() {
+	t.syncPromptMarkOffset()
 	src, ok := t.Terminal.(semanticPromptSource)
 	if !ok {
 		return
@@ -116,6 +127,7 @@ func (t *Terminal) foldSemanticPrompts() {
 		return
 	}
 	for _, ev := range events {
+		t.recordPromptMark(ev)
 		switch ev.Type {
 		case emu.CommandExecuted:
 			t.cmd.Running = true
@@ -127,6 +139,52 @@ func (t *Terminal) foldSemanticPrompts() {
 		}
 	}
 	dirty.SemanticPrompts = dirty.SemanticPrompts[:0]
+}
+
+// foldBell drains Dirty.Bell into bellPending. Called with t.mu held.
+func (t *Terminal) foldBell() {
+	src, ok := t.Terminal.(semanticPromptSource)
+	if !ok {
+		return
+	}
+	dirty := src.Changes()
+	if dirty.Bell {
+		t.bellPending = true
+		dirty.Bell = false
+	}
+}
+
+// TakeBell reports whether a BEL was received since the previous call and
+// clears the pending flag. The UI uses this for a brief visual flash.
+func (t *Terminal) TakeBell() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.bellPending {
+		return false
+	}
+	t.bellPending = false
+	return true
+}
+
+// TakePaintDirty returns dirty screen-row indices (and whether a full-screen
+// change occurred) since the previous take, then clears those paint flags.
+// Callers use this for best-effort partial redraws; ScreenChanged or an
+// empty Lines map means a full paint is required.
+func (t *Terminal) TakePaintDirty() (lines DirtyRows, screenChanged bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	src, ok := t.Terminal.(semanticPromptSource)
+	if !ok {
+		return nil, true
+	}
+	d := src.Changes()
+	screenChanged = d.ScreenChanged()
+	if len(d.Lines) > 0 {
+		lines = d.Lines
+		d.Lines = make(DirtyRows)
+	}
+	d.Flag &^= emu.ChangedScreen
+	return lines, screenChanged
 }
 
 // CommandState returns the terminal's current OSC 133 command-run state
@@ -156,3 +214,19 @@ func (t *Terminal) RLock() { t.mu.RLock() }
 
 // RUnlock ends a read pass started by RLock.
 func (t *Terminal) RUnlock() { t.mu.RUnlock() }
+
+// historyOffsetSource is satisfied by *emu.State — HistoryOffset isn't on
+// emu.Terminal/View, so it's reached the same way Changes() is.
+type historyOffsetSource interface {
+	HistoryOffset() int
+}
+
+// HistoryOffset returns how many scrollback lines have been pruned from the
+// front of the active history buffer (0 if the concrete emu has no offset).
+// Call within RLock/RUnlock when combining with History()/Screen().
+func (t *Terminal) HistoryOffset() int {
+	if src, ok := t.Terminal.(historyOffsetSource); ok {
+		return src.HistoryOffset()
+	}
+	return 0
+}

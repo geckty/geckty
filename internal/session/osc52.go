@@ -21,12 +21,14 @@ const defaultMaxOSC52 = 5 << 20
 // The payload is stashed; the UI drains via Session.TakeClipboardWrite.
 //
 // Read: denied unless ReadAllow is set (exfiltration risk; kitty default).
+// When allowed, hostRead (if set) supplies the host clipboard bytes.
 type osc52Bridge struct {
 	mu      sync.Mutex
 	pending []byte
 	// clearPending is set when an empty OSC 52 write should clear the OS clipboard.
 	clearPending bool
 	policy       ClipboardPolicy
+	hostRead     func() ([]byte, bool)
 	log          *slog.Logger
 }
 
@@ -64,12 +66,22 @@ func (b *osc52Bridge) OSC52Write(_ string, data []byte) {
 
 // OSC52Read implements emu.OSC52Handler.
 func (b *osc52Bridge) OSC52Read(_ string) ([]byte, bool) {
-	if !b.policy.ReadAllow {
+	b.mu.Lock()
+	allow := b.policy.ReadAllow
+	fn := b.hostRead
+	b.mu.Unlock()
+	if !allow || fn == nil {
 		return nil, false
 	}
-	// ReadAllow is reserved for a future UI-confirmed clipboard read path.
-	// Until then, never return host clipboard data from the PTY goroutine.
-	return nil, false
+	return fn()
+}
+
+// SetHostClipboardRead installs the host clipboard reader used when
+// ReadAllow is true. nil clears it (queries then return ok=false).
+func (s *Session) SetHostClipboardRead(fn func() ([]byte, bool)) {
+	s.osc52.mu.Lock()
+	s.osc52.hostRead = fn
+	s.osc52.mu.Unlock()
 }
 
 func (b *osc52Bridge) take() (data []byte, shouldClear bool, ok bool) {

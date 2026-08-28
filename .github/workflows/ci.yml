@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
 
 jobs:
   build:
@@ -103,8 +103,9 @@ jobs:
       - run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcursor-dev libxfixes-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
+          version: v2.13.2
           args: --timeout=5m
 
   formatting:
@@ -164,7 +165,7 @@ jobs:
           sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcursor-dev libxfixes-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev xvfb
       - run: go build -o geckty ./cmd/geckty
       # Wayland is intentionally not smoke-tested here: gogpu (the UI
-      # backend, see internal/ui/gogpu) hard-requires a wl_seat global
+      # backend, see internal/ui/app) hard-requires a wl_seat global
       # during startup, but Weston's headless-backend deliberately never
       # advertises one (an upstream Weston design decision, not a bug) —
       # so no CI-feasible headless-Weston smoke test can ever pass here.

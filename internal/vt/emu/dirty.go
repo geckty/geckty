@@ -53,6 +53,11 @@ type Dirty struct {
 	// SemanticPrompts contains OSC 133 semantic prompt events since the
 	// last Reset().
 	SemanticPrompts []SemanticPromptEvent
+
+	// Bell is set when BEL (\a) was received since the last consumer
+	// cleared it. Geckty addition for visual-bell UI (upstream only had a
+	// TODO in Execute).
+	Bell bool
 }
 
 func (t *State) Changes() *Dirty {
@@ -103,6 +108,7 @@ func (d *Dirty) Reset() {
 	d.Cleared = false
 
 	d.SemanticPrompts = d.SemanticPrompts[:0]
+	d.Bell = false
 }
 
 func (d *Dirty) ScreenChanged() bool {

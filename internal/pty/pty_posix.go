@@ -17,7 +17,7 @@ import (
 // configured") when many pseudo-terminals are allocated concurrently —
 // observed as flaky CI failures under `go test -parallel` across packages
 // that each spawn real shells (internal/pty, internal/session,
-// internal/plugin, internal/ui/gogpu). The device frees up within
+// internal/plugin, internal/ui/app). The device frees up within
 // milliseconds, so a few short retries clear it without masking a genuine,
 // persistent failure.
 const (

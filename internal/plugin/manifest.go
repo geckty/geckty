@@ -7,15 +7,30 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+const (
+	// PermissionLog allows host log().
+	PermissionLog = "log"
+	// PermissionStatusbar allows statusbar_draw().
+	PermissionStatusbar = "statusbar"
+)
+
+// PermissionSet is a plugin's declared capability set (manifest permissions).
+type PermissionSet map[string]bool
+
+// Has reports whether name was granted.
+func (p PermissionSet) Has(name string) bool {
+	return p[name]
+}
+
 // knownPermissions is the fixed set of capability strings a plugin.toml's
 // permissions array may contain — deny-by-default, like
 // internal/ui/input.Keymap rejects unknown keybinding actions: an
 // unrecognized permission (a typo, or a capability a future geckty version
 // hasn't added yet) fails to load rather than being silently granted
 // nothing or silently ignored.
-var knownPermissions = map[string]bool{
-	"log":       true,
-	"statusbar": true,
+var knownPermissions = PermissionSet{
+	PermissionLog:       true,
+	PermissionStatusbar: true,
 }
 
 // Manifest is a parsed plugin.toml: name, version, and entry are metadata;

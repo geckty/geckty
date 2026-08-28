@@ -1,6 +1,7 @@
 package session
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -23,7 +24,7 @@ func TestSelectionStartGivesZeroWidthSelection(t *testing.T) {
 		t.Fatal("expected a selection after StartSelection")
 	}
 	if start != (CellPos{3, 1}) || end != (CellPos{3, 1}) {
-		t.Fatalf("start=%+v end=%+v, want both (3,1)", start, end)
+		t.Fatalf("start=%+v end=%+v, want both Col=3 AbsLine=1", start, end)
 	}
 }
 
@@ -237,44 +238,68 @@ func TestEndSelectionKeepsASingleCharacterWordSelection(t *testing.T) {
 
 func TestRegisterClickDetectsDoubleClick(t *testing.T) {
 	s := newTestSession(newFakePTY(), 10, 2, nil)
-	if s.RegisterClick(3, 1) {
-		t.Fatal("first click must never register as a double-click")
+	if got := s.RegisterClick(3, 1); got != 1 {
+		t.Fatalf("first click count = %d, want 1", got)
 	}
-	if !s.RegisterClick(3, 1) {
-		t.Fatal("expected a second click in the same cell, soon after, to register as a double-click")
+	if got := s.RegisterClick(3, 1); got != 2 {
+		t.Fatalf("second click count = %d, want 2", got)
 	}
 }
 
 func TestRegisterClickDifferentCellIsNotADouble(t *testing.T) {
 	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.RegisterClick(3, 1)
-	if s.RegisterClick(4, 1) {
-		t.Fatal("a click in a different cell must not register as a double-click")
+	if got := s.RegisterClick(4, 1); got != 1 {
+		t.Fatalf("click in a different cell count = %d, want 1", got)
 	}
 }
 
 func TestRegisterClickTooSlowIsNotADouble(t *testing.T) {
 	s := newTestSession(newFakePTY(), 10, 2, nil)
 	s.selMu.Lock()
-	s.lastClick = clickRecord{at: time.Now().Add(-doubleClickWindow * 2), pos: cellPos{3, 1}}
+	s.lastClick = clickRecord{at: time.Now().Add(-doubleClickWindow * 2), pos: cellPos{3, 1}, count: 1}
 	s.selMu.Unlock()
 
-	if s.RegisterClick(3, 1) {
-		t.Fatal("a click after doubleClickWindow has elapsed must not register as a double-click")
+	if got := s.RegisterClick(3, 1); got != 1 {
+		t.Fatalf("click after doubleClickWindow count = %d, want 1", got)
 	}
 }
 
-func TestRegisterClickResetsAfterADouble(t *testing.T) {
+func TestRegisterClickTripleThenResets(t *testing.T) {
 	s := newTestSession(newFakePTY(), 10, 2, nil)
-	s.RegisterClick(3, 1)
-	if !s.RegisterClick(3, 1) {
-		t.Fatal("expected the second click to register as a double-click")
+	if got := s.RegisterClick(3, 1); got != 1 {
+		t.Fatalf("click 1 = %d, want 1", got)
 	}
-	// A third rapid click in the same cell starts a fresh count, not
-	// another double (matches "double-click" semantics, not "every
-	// click after the first is a double").
-	if s.RegisterClick(3, 1) {
-		t.Fatal("expected the third click to NOT register as a double-click (count resets after a detected double)")
+	if got := s.RegisterClick(3, 1); got != 2 {
+		t.Fatalf("click 2 = %d, want 2", got)
+	}
+	if got := s.RegisterClick(3, 1); got != 3 {
+		t.Fatalf("click 3 = %d, want 3", got)
+	}
+	if got := s.RegisterClick(3, 1); got != 1 {
+		t.Fatalf("click 4 should restart at 1, got %d", got)
+	}
+}
+
+func TestSelectLine(t *testing.T) {
+	p := newFakePTY()
+	dirty := make(chan struct{}, 8)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} })
+	go s.Run()
+	defer func() { _ = s.Close() }()
+
+	writeAndWaitDirty(t, p, dirty, "hello")
+	s.SelectLine(0)
+	start, end, ok := s.Selection()
+	if !ok {
+		t.Fatal("expected selection after SelectLine")
+	}
+	if start.Col != 0 || end.Col != 9 || start.AbsLine != 0 || end.AbsLine != 0 {
+		t.Fatalf("SelectLine bounds = %+v-%+v, want cols 0-9 on AbsLine 0", start, end)
+	}
+	text, ok := s.SelectedText()
+	if !ok || text != "hello" {
+		t.Fatalf("SelectedText = %q, %v, want \"hello\"", text, ok)
 	}
 }
 
@@ -335,5 +360,152 @@ func TestSelectedTextTrimsTrailingBlanks(t *testing.T) {
 	}
 	if text != "hi" {
 		t.Fatalf("SelectedText = %q, want %q (trailing blanks trimmed)", text, "hi")
+	}
+}
+
+func TestSelectedTextFromScrollbackHistory(t *testing.T) {
+	p := newFakePTY()
+	dirty := make(chan struct{}, 32)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} })
+	go s.Run()
+	defer func() { _ = s.Close() }()
+
+	for i := 0; i < 5; i++ {
+		writeAndWaitDirty(t, p, dirty, "line"+string(rune('0'+i))+"\r\n")
+	}
+	if len(s.Term.History()) == 0 {
+		t.Fatal("expected history after overflowing the screen")
+	}
+
+	// AbsLine 0 is the oldest retained history line ("line0").
+	s.StartSelection(0, 0)
+	s.ExtendSelection(4, 0)
+	s.EndSelection()
+	text, ok := s.SelectedText()
+	if !ok {
+		t.Fatal("expected SelectedText ok=true for a history selection")
+	}
+	if text != "line0" {
+		t.Fatalf("SelectedText = %q, want %q", text, "line0")
+	}
+}
+
+func TestViewToAbsLineRespectsScrollOffset(t *testing.T) {
+	p := newFakePTY()
+	dirty := make(chan struct{}, 32)
+	s := newTestSession(p, 10, 2, func() { dirty <- struct{}{} })
+	go s.Run()
+	defer func() { _ = s.Close() }()
+
+	for i := 0; i < 5; i++ {
+		writeAndWaitDirty(t, p, dirty, "line"+string(rune('0'+i))+"\r\n")
+	}
+	histLen := len(s.Term.History())
+	if histLen == 0 {
+		t.Fatal("expected history")
+	}
+	if got := s.ViewToAbsLine(0); got != histLen {
+		t.Fatalf("live ViewToAbsLine(0) = %d, want histLen %d", got, histLen)
+	}
+	s.ScrollBy(histLen)
+	if got := s.ViewToAbsLine(0); got != 0 {
+		t.Fatalf("fully scrolled ViewToAbsLine(0) = %d, want 0", got)
+	}
+}
+
+func TestSyncSelectionHistoryOffsetShiftsOnPrune(t *testing.T) {
+	p := newFakePTY()
+	dirty := make(chan struct{}, 64)
+	s := newWithPTY(p, 10, 2, Config{
+		OnDirty:      func() { dirty <- struct{}{} },
+		HistoryLimit: 3,
+		Clipboard:    ClipboardPolicy{WriteAllow: true, MaxSize: defaultMaxOSC52},
+	})
+	go s.Run()
+	defer func() { _ = s.Close() }()
+
+	// Grow history to the limit without pruning past the selection yet.
+	for i := 0; i < 5; i++ {
+		writeAndWaitDirty(t, p, dirty, "line"+string(rune('0'+i))+"\r\n")
+	}
+	// Select whatever is currently AbsLine 0 (oldest retained).
+	s.StartSelection(0, 0)
+	s.ExtendSelection(4, 0)
+	s.EndSelection()
+	before, ok := s.SelectedText()
+	if !ok || before == "" {
+		t.Fatalf("SelectedText before prune = %q, %v", before, ok)
+	}
+
+	// More output forces prune; syncSelectionHistoryOffset runs in Run.
+	for i := 0; i < 8; i++ {
+		writeAndWaitDirty(t, p, dirty, "more"+string(rune('a'+i))+"\r\n")
+	}
+
+	start, end, still := s.Selection()
+	if !still {
+		// Fully pruned selection is allowed to disappear.
+		return
+	}
+	if start.AbsLine < 0 || end.AbsLine < 0 {
+		t.Fatalf("selection AbsLines went negative: start=%+v end=%+v", start, end)
+	}
+	text, ok := s.SelectedText()
+	if !ok {
+		t.Fatal("expected SelectedText ok while selection still present")
+	}
+	if text == "" {
+		t.Fatal("expected non-empty SelectedText after prune adjust")
+	}
+}
+
+func TestViewportTopHelpers(t *testing.T) {
+	if got := viewportTop(5, 2, 2, 0); got != 5 {
+		t.Fatalf("live top = %d, want 5", got)
+	}
+	if got := viewportTop(5, 2, 2, 5); got != 0 {
+		t.Fatalf("max scroll top = %d, want 0", got)
+	}
+	if got := viewToAbsLine(5, 2, 2, 3, 1); got != 3 {
+		// top = 5+2-2-3 = 2; + viewRow 1 = 3
+		t.Fatalf("viewToAbsLine = %d, want 3", got)
+	}
+}
+
+func TestSelectionRectAndDragging(t *testing.T) {
+	p := newFakePTY()
+	dirty := make(chan struct{}, 8)
+	s := newTestSession(p, 20, 4, func() { dirty <- struct{}{} })
+	go s.Run()
+	defer func() { _ = s.Close() }()
+
+	writeAndWaitDirty(t, p, dirty, "abcdef\r\nghijkl\r\n")
+
+	s.StartSelectionMode(1, 0, true)
+	if !s.SelectionDragging() {
+		t.Fatal("expected dragging after StartSelectionMode")
+	}
+	if !s.SelectionRect() {
+		t.Fatal("expected rectangular selection")
+	}
+	s.ExtendSelection(3, 1)
+	start, end, ok := s.Selection()
+	if !ok || start.Col != 1 || end.Col != 3 || start.AbsLine != 0 || end.AbsLine != 1 {
+		t.Fatalf("rect bounds = %+v %+v ok=%v", start, end, ok)
+	}
+	text, ok := s.SelectedText()
+	if !ok {
+		t.Fatal("SelectedText should succeed for rect")
+	}
+	// Columns 1..3 of each line: bcd / hij
+	if !strings.Contains(text, "bcd") || !strings.Contains(text, "hij") {
+		t.Fatalf("SelectedText = %q, want columns bcd/hij", text)
+	}
+	s.EndSelection()
+	if s.SelectionDragging() {
+		t.Fatal("dragging should clear after EndSelection")
+	}
+	if !s.SelectionRect() {
+		t.Fatal("rect mode should remain after EndSelection")
 	}
 }

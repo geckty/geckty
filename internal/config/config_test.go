@@ -217,6 +217,11 @@ func TestDefaultKeybindingsNonEmpty(t *testing.T) {
 	wantActions := map[string]bool{
 		"new_tab": true, "close_tab": true, "next_tab": true, "prev_tab": true,
 		"copy": true, "paste": true,
+		"split_vertical": true, "split_horizontal": true,
+		"next_pane": true, "prev_pane": true, "close_pane": true,
+		"scroll_to_prev_prompt": true, "scroll_to_next_prompt": true,
+		"select_last_command_output": true,
+		"open_url_hints":             true, "show_scrollback": true,
 	}
 	for _, kb := range kbs {
 		delete(wantActions, kb.Action)

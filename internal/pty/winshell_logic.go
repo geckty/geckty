@@ -58,8 +58,8 @@ func windowsPathToSlash(path string) string {
 
 func windowsBaseName(path string) string {
 	slashed := windowsPathToSlash(path)
-	if i := strings.LastIndexByte(slashed, '/'); i >= 0 {
-		return slashed[i+1:]
+	if _, after, ok := strings.CutLast(slashed, "/"); ok {
+		return after
 	}
 	return slashed
 }

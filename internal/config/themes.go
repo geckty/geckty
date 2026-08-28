@@ -2,57 +2,138 @@ package config
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/geckty/geckty/assets"
 )
 
-const glassThemeName = "glass"
+const (
+	glassThemeName   = ThemeGlass
+	defaultThemeName = glassThemeName
+)
 
-// builtinThemes maps a theme name to a full color set shipped with geckty.
-// User theme files under themes/<name>.toml override these when present.
-var builtinThemes = map[string]ColorsConfig{
-	glassThemeName: {
-		Foreground:          "#f4f4f4",
-		Background:          "#1d1f22",
-		Selection:           "#525252",
-		SelectionBackground: "#525252",
-		ANSI: [16]string{
-			"#000000", "#c23621", "#25a250", "#caca33",
-			"#492ee1", "#d338d3", "#33bbc8", "#cbcccc",
-			"#818383", "#fc391f", "#31e722", "#eaec23",
-			"#5833ff", "#f935f8", "#14f0f0", "#e9ebeb",
-		},
-	},
-}
-
-// themeFile is the on-disk shape of themes/<name>.toml — a [colors] table
-// with the same keys as Config.Colors.
-type themeFile struct {
+// ThemeFile is the on-disk shape of themes/<name>.toml.
+type ThemeFile struct {
 	Colors ColorsConfig `toml:"colors"`
+	UI     UIConfig     `toml:"ui"`
 }
 
-// loadThemeColors resolves name to a ColorsConfig: first a themes/<name>.toml
-// next to the config file (or under the geckty config dir), then a built-in.
-func loadThemeColors(name, configPath string) (ColorsConfig, error) {
+// UIConfig is the [ui] section of a theme or config.toml — UX chrome tokens
+// that are not part of the VT ANSI palette (bell, scrollbar, indicators).
+type UIConfig struct {
+	VisualBell           string      `toml:"visual_bell"`
+	ScrollbarTrack       string      `toml:"scrollbar_track"`
+	ScrollbarThumb       string      `toml:"scrollbar_thumb"`
+	URLUnderline         string      `toml:"url_underline"`
+	SearchMatch          string      `toml:"search_match"`
+	HintLabelBG          string      `toml:"hint_label_bg"`
+	HintLabelFG          string      `toml:"hint_label_fg"`
+	PaneFocusBorder      string      `toml:"pane_focus_border"`
+	CommandRunning       string      `toml:"command_running"`
+	CommandSuccess       string      `toml:"command_success"`
+	CommandFailed        string      `toml:"command_failed"`
+	CommandBorderEnabled *bool       `toml:"command_border_enabled"`
+	CommandDotEnabled    *bool       `toml:"command_dot_enabled"`
+	ContentBrackets      string      `toml:"content_brackets"` // color; empty = off
+	Glass                GlassConfig `toml:"glass"`
+}
+
+// GlassConfig is [ui.glass] — blend factors for derived tab chrome fills.
+type GlassConfig struct {
+	BarLift   *float64 `toml:"bar_lift"`
+	Inactive  *float64 `toml:"inactive"`
+	Hover     *float64 `toml:"hover"`
+	Active    *float64 `toml:"active"`
+	Drag      *float64 `toml:"drag"`
+	PlusHover *float64 `toml:"plus_hover"`
+	Rim       *float64 `toml:"rim"`        // edge highlight strength (0–1 toward white)
+	RimAlpha  *float64 `toml:"rim_alpha"`  // outline opacity 0–1
+	FillAlpha *float64 `toml:"fill_alpha"` // frosted pill opacity 0–1
+}
+
+// defaultUI returns the glass theme's [ui] defaults from the embedded
+// assets/themes/glass.toml. Pointer bools/floats in the file are set so
+// merge can distinguish "unset" from "explicitly false/zero".
+func defaultUI() UIConfig {
+	tf, ok := loadEmbeddedTheme(defaultThemeName)
+	if !ok {
+		return defaultUIFallback()
+	}
+	return tf.UI
+}
+
+// defaultUIFallback is used only when the embedded glass theme cannot be
+// read. Values come from Glass* (also seeded from embed in init).
+func defaultUIFallback() UIConfig {
+	cmdBorder, cmdDot := false, false
+	barLift, inactive, hover, active, drag := GlassBarLift, GlassInactive, GlassHover, GlassActive, GlassDrag
+	plusHover, rim, rimAlpha, fillAlpha := GlassPlusHover, GlassRim, GlassRimAlpha, GlassFillAlpha
+	return UIConfig{
+		VisualBell:           "#ffffff55",
+		ScrollbarTrack:       "#ffffff28",
+		ScrollbarThumb:       "#ffffff70",
+		ContentBrackets:      "#ffffff55",
+		CommandBorderEnabled: &cmdBorder,
+		CommandDotEnabled:    &cmdDot,
+		Glass: GlassConfig{
+			BarLift:   &barLift,
+			Inactive:  &inactive,
+			Hover:     &hover,
+			Active:    &active,
+			Drag:      &drag,
+			PlusHover: &plusHover,
+			Rim:       &rim,
+			RimAlpha:  &rimAlpha,
+			FillAlpha: &fillAlpha,
+		},
+	}
+}
+
+// loadThemeFile resolves name to a ThemeFile: user themes/<name>.toml first,
+// then an embedded assets/themes/<name>.toml.
+func loadThemeFile(name, configPath string) (ThemeFile, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return ColorsConfig{}, fmt.Errorf("theme: empty name")
+		return ThemeFile{}, fmt.Errorf("theme: empty name")
 	}
 	if path, ok := findThemeFile(name, configPath); ok {
-		var tf themeFile
+		var tf ThemeFile
 		if _, err := toml.DecodeFile(path, &tf); err != nil {
-			return ColorsConfig{}, fmt.Errorf("theme %q (%s): %w", name, path, err)
+			return ThemeFile{}, fmt.Errorf("theme %q (%s): %w", name, path, err)
 		}
-		return tf.Colors, nil
+		return tf, nil
 	}
-	if c, ok := builtinThemes[name]; ok {
-		return c, nil
+	if tf, ok := loadEmbeddedTheme(name); ok {
+		return tf, nil
 	}
-	return ColorsConfig{}, fmt.Errorf("theme: unknown theme %q (known builtins: %s)", name, knownThemeNames())
+	return ThemeFile{}, fmt.Errorf("theme: unknown theme %q (known: %s)", name, strings.Join(ListThemes(configPath), ", "))
+}
+
+// loadThemeColors is kept for callers that only need [colors]; prefer loadThemeFile.
+func loadThemeColors(name, configPath string) (ColorsConfig, error) {
+	tf, err := loadThemeFile(name, configPath)
+	if err != nil {
+		return ColorsConfig{}, err
+	}
+	return tf.Colors, nil
+}
+
+func loadEmbeddedTheme(name string) (ThemeFile, bool) {
+	data, err := fs.ReadFile(assets.Themes, "themes/"+name+".toml")
+	if err != nil {
+		return ThemeFile{}, false
+	}
+	var tf ThemeFile
+	if _, err := toml.Decode(string(data), &tf); err != nil {
+		return ThemeFile{}, false
+	}
+	return tf, true
 }
 
 func findThemeFile(name, configPath string) (string, bool) {
@@ -82,66 +163,63 @@ func configDir() (string, error) {
 	return filepath.Dir(path), nil
 }
 
-func knownThemeNames() string {
-	names := make([]string, 0, len(builtinThemes))
-	for name := range builtinThemes {
+// ListThemes returns sorted theme names from the user themes directory
+// (next to configPath when set) plus embedded themes. User files shadow
+// embedded names of the same stem.
+func ListThemes(configPath string) []string {
+	seen := map[string]struct{}{}
+	var names []string
+	add := func(name string) {
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
 		names = append(names, name)
 	}
+	dirs := make([]string, 0, 2)
+	if configPath != "" {
+		dirs = append(dirs, filepath.Join(filepath.Dir(configPath), "themes"))
+	}
+	if dir, err := configDir(); err == nil {
+		p := filepath.Join(dir, "themes")
+		if len(dirs) == 0 || p != dirs[0] {
+			dirs = append(dirs, p)
+		}
+	}
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			if strings.HasSuffix(name, ".toml") {
+				add(strings.TrimSuffix(name, ".toml"))
+			}
+		}
+	}
+	_ = fs.WalkDir(assets.Themes, "themes", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		base := filepath.Base(path)
+		if strings.HasSuffix(base, ".toml") {
+			add(strings.TrimSuffix(base, ".toml"))
+		}
+		return nil
+	})
 	sort.Strings(names)
-	return strings.Join(names, ", ")
+	return names
 }
 
-// mergeColors overlays non-empty fields from over onto base. Empty strings
-// and a zero ANSI array in over leave base's values. Chrome keys follow the
-// same rule so a theme can omit them and keep glass-derived defaults at the
-// palette layer.
-func mergeColors(base, over ColorsConfig) ColorsConfig {
-	out := base
-	if over.Foreground != "" {
-		out.Foreground = over.Foreground
-	}
-	if over.Background != "" {
-		out.Background = over.Background
-	}
-	if over.Selection != "" {
-		out.Selection = over.Selection
-	}
-	if over.SelectionBackground != "" {
-		out.SelectionBackground = over.SelectionBackground
-	}
-	if over.SelectionForeground != "" {
-		out.SelectionForeground = over.SelectionForeground
-	}
-	if over.Cursor != "" {
-		out.Cursor = over.Cursor
-	}
-	if over.ActiveTabForeground != "" {
-		out.ActiveTabForeground = over.ActiveTabForeground
-	}
-	if over.ActiveTabBackground != "" {
-		out.ActiveTabBackground = over.ActiveTabBackground
-	}
-	if over.InactiveTabForeground != "" {
-		out.InactiveTabForeground = over.InactiveTabForeground
-	}
-	if over.InactiveTabBackground != "" {
-		out.InactiveTabBackground = over.InactiveTabBackground
-	}
-	if over.TabBarBackground != "" {
-		out.TabBarBackground = over.TabBarBackground
-	}
-	if over.HoverTabBackground != "" {
-		out.HoverTabBackground = over.HoverTabBackground
-	}
-	if over.PlusButtonBackground != "" {
-		out.PlusButtonBackground = over.PlusButtonBackground
-	}
-	if ansiNonEmpty(over.ANSI) {
-		out.ANSI = over.ANSI
-	}
-	// Deprecated Preset is never carried forward.
-	out.Preset = ""
-	return out
+func knownThemeNames() string {
+	return strings.Join(ListThemes(""), ", ")
 }
 
 func ansiNonEmpty(ansi [16]string) bool {
@@ -151,55 +229,4 @@ func ansiNonEmpty(ansi [16]string) bool {
 		}
 	}
 	return false
-}
-
-// colorsOverridesFrom returns only the color fields that md marks as
-// defined under [colors], taken from decoded (which already holds the
-// file's values for those keys).
-func colorsOverridesFrom(md toml.MetaData, decoded ColorsConfig) ColorsConfig {
-	var over ColorsConfig
-	defined := func(key string) bool { return md.IsDefined("colors", key) }
-	if defined("foreground") {
-		over.Foreground = decoded.Foreground
-	}
-	if defined("background") {
-		over.Background = decoded.Background
-	}
-	if defined("selection") {
-		over.Selection = decoded.Selection
-	}
-	if defined("selection_background") {
-		over.SelectionBackground = decoded.SelectionBackground
-	}
-	if defined("selection_foreground") {
-		over.SelectionForeground = decoded.SelectionForeground
-	}
-	if defined("cursor") {
-		over.Cursor = decoded.Cursor
-	}
-	if defined("active_tab_foreground") {
-		over.ActiveTabForeground = decoded.ActiveTabForeground
-	}
-	if defined("active_tab_background") {
-		over.ActiveTabBackground = decoded.ActiveTabBackground
-	}
-	if defined("inactive_tab_foreground") {
-		over.InactiveTabForeground = decoded.InactiveTabForeground
-	}
-	if defined("inactive_tab_background") {
-		over.InactiveTabBackground = decoded.InactiveTabBackground
-	}
-	if defined("tab_bar_background") {
-		over.TabBarBackground = decoded.TabBarBackground
-	}
-	if defined("hover_tab_background") {
-		over.HoverTabBackground = decoded.HoverTabBackground
-	}
-	if defined("plus_button_background") {
-		over.PlusButtonBackground = decoded.PlusButtonBackground
-	}
-	if defined("ansi") {
-		over.ANSI = decoded.ANSI
-	}
-	return over
 }

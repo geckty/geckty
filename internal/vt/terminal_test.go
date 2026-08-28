@@ -146,3 +146,25 @@ func TestCommandStateDoesNotLeakDirtyEvents(t *testing.T) {
 		t.Fatalf("Dirty.SemanticPrompts has %d leaked events, want 0", n)
 	}
 }
+
+func TestTakePaintDirtyReturnsAndClearsLineFlags(t *testing.T) {
+	term := New(10, 3, &bytes.Buffer{}, nil, 0)
+	term.Parse([]byte("hello\r\n"))
+	lines, _ := term.TakePaintDirty()
+	if len(lines) == 0 {
+		t.Fatal("expected dirty lines after Parse")
+	}
+	lines2, _ := term.TakePaintDirty()
+	if len(lines2) != 0 {
+		t.Fatalf("dirty lines should be cleared after take, got %v", lines2)
+	}
+}
+
+func TestResizeCellsChangesDimensions(t *testing.T) {
+	term := New(10, 2, &bytes.Buffer{}, nil, 0)
+	term.ResizeCells(40, 12)
+	sz := term.Size()
+	if sz.C != 40 || sz.R != 12 {
+		t.Fatalf("Size = %dx%d, want 40x12", sz.C, sz.R)
+	}
+}

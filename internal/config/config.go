@@ -20,8 +20,11 @@ type Config struct {
 	// under the geckty config dir) or a built-in theme of the same name,
 	// then merges any inline [colors] keys on top — Kitty-style include +
 	// override, not an all-or-nothing preset.
-	Theme       string           `toml:"theme"`
-	Colors      ColorsConfig     `toml:"colors"`
+	Theme  string       `toml:"theme"`
+	Colors ColorsConfig `toml:"colors"`
+	// UI holds [ui] chrome tokens (bell, scrollbar, indicators, glass
+	// blends). Resolved like Colors: defaults ← theme file ← inline.
+	UI          UIConfig         `toml:"ui"`
 	Shell       ShellConfig      `toml:"shell"`
 	Selection   SelectionConfig  `toml:"selection"`
 	TabBar      TabBarConfig     `toml:"tabbar"`
@@ -260,9 +263,9 @@ func DefaultPath() (string, error) {
 // Load reads and parses the TOML file at path, filling any field absent
 // from the file with its default value.
 //
-// Color resolution is defaults ← theme file/builtin ← inline [colors]
-// (Kitty-style merge). colors.preset is accepted as a deprecated alias
-// for top-level theme when theme is unset.
+// Color/UI resolution is defaults ← theme file (embedded or on disk) ←
+// inline [colors]/[ui] (Kitty-style merge). colors.preset is accepted as
+// a deprecated alias for top-level theme when theme is unset.
 func Load(path string) (*Config, error) {
 	cfg := Default()
 	cfg.sourcePath = path
@@ -275,14 +278,14 @@ func Load(path string) (*Config, error) {
 		}
 		return nil, err
 	}
-	if err := resolveColors(cfg, md, path); err != nil {
+	if err := resolveTheme(cfg, md, path); err != nil {
 		return nil, err
 	}
 	return cfg, nil
 }
 
-// resolveColors rebuilds cfg.Colors as defaults ← theme ← file overrides.
-func resolveColors(cfg *Config, md toml.MetaData, configPath string) error {
+// resolveTheme rebuilds cfg.Colors and cfg.UI as defaults ← theme ← overrides.
+func resolveTheme(cfg *Config, md toml.MetaData, configPath string) error {
 	themeName := cfg.Theme
 	if themeName == "" && md.IsDefined("colors", "preset") && cfg.Colors.Preset != "" {
 		themeName = cfg.Colors.Preset
@@ -290,16 +293,20 @@ func resolveColors(cfg *Config, md toml.MetaData, configPath string) error {
 	cfg.Theme = themeName
 	cfg.Colors.Preset = ""
 
-	overrides := colorsOverridesFrom(md, cfg.Colors)
-	merged := defaultColors()
+	colorOverrides := colorsOverridesFrom(md, cfg.Colors)
+	uiOverrides := uiOverridesFrom(md, cfg.UI)
+	mergedColors := defaultColors()
+	mergedUI := defaultUI()
 	if themeName != "" {
-		themeColors, err := loadThemeColors(themeName, configPath)
+		tf, err := loadThemeFile(themeName, configPath)
 		if err != nil {
 			return err
 		}
-		merged = mergeColors(merged, themeColors)
+		mergedColors = mergeColors(mergedColors, tf.Colors)
+		mergedUI = mergeUI(mergedUI, tf.UI)
 	}
-	cfg.Colors = mergeColors(merged, overrides)
+	cfg.Colors = mergeColors(mergedColors, colorOverrides)
+	cfg.UI = mergeUI(mergedUI, uiOverrides)
 	return nil
 }
 

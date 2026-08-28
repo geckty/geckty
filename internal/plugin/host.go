@@ -1,8 +1,8 @@
 // Package plugin runs geckty's user-authored WASM plugins via wazero (pure
 // Go, no cgo). Like internal/session and internal/vt, this package has no
-// gogpu/gpucontext import; internal/ui/gogpu decides when to call a
+// gogpu/gpucontext import; internal/ui/app decides when to call a
 // plugin's hooks and what to do with the results (see
-// internal/ui/gogpu/app.go's plugin wiring and the project plan's M9
+// internal/ui/app/app.go's plugin wiring and the project plan's M9
 // write-up for the redraw-cadence decision).
 //
 // # Guest toolchain
@@ -78,7 +78,7 @@ type Plugin struct {
 	Name string
 
 	mod         api.Module
-	permissions map[string]bool
+	permissions PermissionSet
 
 	statusMu   sync.Mutex
 	statusText string
@@ -115,7 +115,7 @@ func (h *Host) Load(ctx context.Context, dir string) (*Plugin, error) {
 		return nil, fmt.Errorf("plugin %q: compiling %s: %w", m.Name, wasmPath, err)
 	}
 
-	perms := make(map[string]bool, len(m.Permissions))
+	perms := make(PermissionSet, len(m.Permissions))
 	for _, p := range m.Permissions {
 		perms[p] = true
 	}
@@ -154,5 +154,5 @@ func (h *Host) Close(ctx context.Context) error {
 
 // hasPermission reports whether the plugin's manifest declared name.
 func (p *Plugin) hasPermission(name string) bool {
-	return p.permissions[name]
+	return p.permissions.Has(name)
 }

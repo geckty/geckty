@@ -5,6 +5,7 @@ package session
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/geckty/geckty/internal/pty"
@@ -61,8 +62,14 @@ type Session struct {
 	selMu       sync.Mutex
 	sel         selectionState
 	lastClick   clickRecord // guarded by selMu; see RegisterClick
-	osc52       *osc52Bridge
-	gfx         *graphics
+	// selHistOffset tracks Term.HistoryOffset() so prune deltas can shift
+	// selection AbsLines (see syncSelectionHistoryOffset).
+	selHistOffset int
+	// lastPromptJump is the AbsLine of the most recent ScrollToPrompt /
+	// SelectLastCommandOutput target (-1 = none yet).
+	lastPromptJump int
+	osc52          *osc52Bridge
+	gfx            *graphics
 }
 
 // New spawns a shell per cfg and wires its PTY output into a VT terminal of
@@ -102,10 +109,11 @@ func newWithPTY(p pty.PTY, cols, rows int, cfg Config) *Session {
 		log = slog.Default()
 	}
 	s := &Session{
-		PTY:     p,
-		onDirty: cfg.OnDirty,
-		onExit:  cfg.OnExit,
-		osc52:   newOSC52Bridge(cfg.Clipboard, log.With(slog.String("op", "session.osc52"))),
+		PTY:            p,
+		onDirty:        cfg.OnDirty,
+		onExit:         cfg.OnExit,
+		lastPromptJump: -1,
+		osc52:          newOSC52Bridge(cfg.Clipboard, log.With(slog.String("op", "session.osc52"))),
 	}
 	s.Term = vt.New(cols, rows, writerFunc(s.Write), s.osc52, cfg.HistoryLimit)
 	s.gfx = newGraphics(s)
@@ -153,12 +161,14 @@ func (s *Session) Run() {
 			// live view whenever alt screen engages. The same
 			// applies to Kitty-graphics placements from the main
 			// screen.
+			s.syncSelectionHistoryOffset()
 			s.Term.RLock()
 			altScreen := s.Term.Mode()&emu.ModeAltScreen != 0
 			s.Term.RUnlock()
 			if altScreen {
 				s.ResetScroll()
 				s.clearPlacements()
+				s.ClearSelection()
 			}
 			if s.onDirty != nil {
 				s.onDirty()
@@ -175,11 +185,9 @@ func (s *Session) Run() {
 
 // ScrollBy adjusts the scrollback offset by delta lines (positive scrolls
 // back into history, negative scrolls toward the live bottom), clamped to
-// [0, len(history)]. It returns the resulting offset.
+// [0, maxScrollOffset]. It returns the resulting offset.
 func (s *Session) ScrollBy(delta int) int {
-	s.Term.RLock()
-	maxOffset := len(s.Term.History())
-	s.Term.RUnlock()
+	maxOffset := s.maxScrollOffset()
 
 	s.scrollMu.Lock()
 	defer s.scrollMu.Unlock()
@@ -193,11 +201,53 @@ func (s *Session) ScrollBy(delta int) int {
 	return s.scrollLines
 }
 
+// maxScrollOffset is the largest scrollback offset where the viewport still
+// shows real content — scrolling further would repeat or expose empty rows.
+func (s *Session) maxScrollOffset() int {
+	s.Term.RLock()
+	defer s.Term.RUnlock()
+	history := len(s.Term.History())
+	screen := len(s.Term.Screen())
+	rows := s.Term.Size().R
+	total := history + screen
+	if rows <= 0 || total <= rows {
+		return 0
+	}
+	return total - rows
+}
+
 // ScrollOffset returns the current scrollback offset (0 = live/bottom).
 func (s *Session) ScrollOffset() int {
 	s.scrollMu.Lock()
 	defer s.scrollMu.Unlock()
 	return s.scrollLines
+}
+
+// ScrollbackText returns History()+Screen() as newline-separated text
+// (trailing spaces trimmed per line), for pager / remote-control export.
+func (s *Session) ScrollbackText() string {
+	s.Term.RLock()
+	defer s.Term.RUnlock()
+
+	history := s.Term.History()
+	screen := s.Term.Screen()
+	cols := s.Term.Size().C
+	total := len(history) + len(screen)
+	if total == 0 || cols <= 0 {
+		return ""
+	}
+	var b strings.Builder
+	for abs := 0; abs < total; abs++ {
+		runes, ok := lineRunesAt(history, screen, abs, cols)
+		if !ok {
+			continue
+		}
+		b.WriteString(strings.TrimRight(string(runes), " "))
+		if abs != total-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
 }
 
 // ResetScroll returns to the live/bottom view.

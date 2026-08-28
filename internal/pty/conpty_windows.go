@@ -22,6 +22,28 @@ type conPTY struct {
 	closedOnce func()
 }
 
+// conptyHandles tracks OS resources acquired during Open so error paths
+// can release them without repeating CloseHandle sequences.
+type conptyHandles struct {
+	hpc                    windows.Handle
+	ptyInWrite, ptyOutRead windows.Handle
+}
+
+func (h *conptyHandles) release() {
+	if h.hpc != 0 {
+		windows.ClosePseudoConsole(h.hpc)
+		h.hpc = 0
+	}
+	if h.ptyInWrite != 0 {
+		_ = windows.CloseHandle(h.ptyInWrite)
+		h.ptyInWrite = 0
+	}
+	if h.ptyOutRead != 0 {
+		_ = windows.CloseHandle(h.ptyOutRead)
+		h.ptyOutRead = 0
+	}
+}
+
 // Open spawns Config.Command (or the platform default shell) attached to a
 // new Windows ConPTY (windows.CreatePseudoConsole via kernel32).
 //
@@ -59,13 +81,52 @@ func Open(cfg Config) (PTY, error) {
 		rows = 24
 	}
 
-	// Two pipes: one for the child's stdin (we write, ConPTY reads),
-	// one for the child's stdout+stderr (ConPTY writes, we read).
+	h, err := createConptyPipes(cols, rows)
+	if err != nil {
+		return nil, err
+	}
+
+	si, attrList, err := attachPseudoConsole(h.hpc)
+	if err != nil {
+		h.release()
+		return nil, err
+	}
+	defer attrList.Delete()
+
+	cmdLine, envBlock, dirPtr, err := prepareProcessParams(command, cfg)
+	if err != nil {
+		h.release()
+		return nil, err
+	}
+
+	pi, err := spawnConptyProcess(cmdLine, envBlock, dirPtr, si)
+	if err != nil {
+		h.release()
+		return nil, err
+	}
+	_ = windows.CloseHandle(pi.Thread)
+
+	job := assignKillOnCloseJob(pi.Process)
+
+	return &conPTY{
+		hpc:     h.hpc,
+		job:     job,
+		pipeIn:  h.ptyInWrite,
+		pipeOut: h.ptyOutRead,
+		proc:    pi.Process,
+		pid:     pi.ProcessId,
+		closed:  make(chan struct{}),
+	}, nil
+}
+
+func createConptyPipes(cols, rows uint16) (*conptyHandles, error) {
 	var ptyIn, ptyInWrite, ptyOutRead, ptyOut windows.Handle
 	if err := windows.CreatePipe(&ptyIn, &ptyInWrite, nil, 0); err != nil {
 		return nil, fmt.Errorf("create stdin pipe: %w", err)
 	}
 	if err := windows.CreatePipe(&ptyOutRead, &ptyOut, nil, 0); err != nil {
+		_ = windows.CloseHandle(ptyIn)
+		_ = windows.CloseHandle(ptyInWrite)
 		return nil, fmt.Errorf("create stdout pipe: %w", err)
 	}
 
@@ -74,8 +135,6 @@ func Open(cfg Config) (PTY, error) {
 		windows.Coord{X: int16(cols), Y: int16(rows)},
 		ptyIn, ptyOut, 0, &hpc,
 	)
-	// The pseudoconsole duplicates the pipe handles it needs; the
-	// child-facing ends are not used directly by us past this point.
 	_ = windows.CloseHandle(ptyIn)
 	_ = windows.CloseHandle(ptyOut)
 	if err != nil {
@@ -83,122 +142,89 @@ func Open(cfg Config) (PTY, error) {
 		_ = windows.CloseHandle(ptyOutRead)
 		return nil, fmt.Errorf("CreatePseudoConsole: %w", err)
 	}
+	return &conptyHandles{hpc: hpc, ptyInWrite: ptyInWrite, ptyOutRead: ptyOutRead}, nil
+}
 
+func attachPseudoConsole(hpc windows.Handle) (*windows.StartupInfoEx, *windows.ProcThreadAttributeListContainer, error) {
 	attrList, err := windows.NewProcThreadAttributeList(1)
 	if err != nil {
-		windows.ClosePseudoConsole(hpc)
-		_ = windows.CloseHandle(ptyInWrite)
-		_ = windows.CloseHandle(ptyOutRead)
-		return nil, fmt.Errorf("NewProcThreadAttributeList: %w", err)
+		return nil, nil, fmt.Errorf("NewProcThreadAttributeList: %w", err)
 	}
-	defer attrList.Delete()
-
 	// `go vet` flags this uintptr->unsafe.Pointer conversion as a possible
 	// misuse (its heuristic assumes uintptr values came from a Go pointer
 	// that GC could move). hpc is an opaque OS handle, never a Go
 	// pointer, so there is nothing to move — this is the documented
-	// Win32 contract for PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE (the
-	// attribute's "value" is the handle's numeric value itself, passed
-	// by value, not a pointer to it).
+	// Win32 contract for PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE.
 	if err := attrList.Update(
 		windows.PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-		unsafe.Pointer(hpc), // by value — see doc comment above
+		unsafe.Pointer(hpc), // by value — see Open doc comment
 		unsafe.Sizeof(hpc),
 	); err != nil {
-		windows.ClosePseudoConsole(hpc)
-		_ = windows.CloseHandle(ptyInWrite)
-		_ = windows.CloseHandle(ptyOutRead)
-		return nil, fmt.Errorf("update attribute list: %w", err)
+		attrList.Delete()
+		return nil, nil, fmt.Errorf("update attribute list: %w", err)
 	}
-
 	si := &windows.StartupInfoEx{
 		StartupInfo: windows.StartupInfo{
 			Cb: uint32(unsafe.Sizeof(windows.StartupInfoEx{})),
 		},
 		ProcThreadAttributeList: attrList.List(),
 	}
+	return si, attrList, nil
+}
 
-	cmdLine, err := windows.UTF16PtrFromString(windows.ComposeCommandLine(command))
+func prepareProcessParams(command []string, cfg Config) (cmdLine *uint16, envBlock *uint16, dirPtr *uint16, err error) {
+	cmdLine, err = windows.UTF16PtrFromString(windows.ComposeCommandLine(command))
 	if err != nil {
-		windows.ClosePseudoConsole(hpc)
-		_ = windows.CloseHandle(ptyInWrite)
-		_ = windows.CloseHandle(ptyOutRead)
-		return nil, fmt.Errorf("compose command line: %w", err)
+		return nil, nil, nil, fmt.Errorf("compose command line: %w", err)
 	}
-
-	envBlock, err := makeEnvBlock(preparePlatformEnv(cfg.Env))
+	envBlock, err = makeEnvBlock(preparePlatformEnv(cfg.Env))
 	if err != nil {
-		windows.ClosePseudoConsole(hpc)
-		_ = windows.CloseHandle(ptyInWrite)
-		_ = windows.CloseHandle(ptyOutRead)
-		return nil, fmt.Errorf("build environment block: %w", err)
+		return nil, nil, nil, fmt.Errorf("build environment block: %w", err)
 	}
-
-	// Empty Dir falls back to the user profile. CreateProcess with a nil
-	// directory often lands in System32 when geckty isn't started from a
-	// shell, so PowerShell shows C:\WINDOWS\… instead of the home path.
 	dir := cfg.Dir
 	if dir == "" {
 		if home, herr := os.UserHomeDir(); herr == nil {
 			dir = home
 		}
 	}
-	var dirPtr *uint16
 	if dir != "" {
 		dirPtr, err = windows.UTF16PtrFromString(dir)
 		if err != nil {
-			windows.ClosePseudoConsole(hpc)
-			_ = windows.CloseHandle(ptyInWrite)
-			_ = windows.CloseHandle(ptyOutRead)
-			return nil, fmt.Errorf("convert dir: %w", err)
+			return nil, nil, nil, fmt.Errorf("convert dir: %w", err)
 		}
 	}
+	return cmdLine, envBlock, dirPtr, nil
+}
 
+func spawnConptyProcess(cmdLine, envBlock, dirPtr *uint16, si *windows.StartupInfoEx) (*windows.ProcessInformation, error) {
 	pi := new(windows.ProcessInformation)
-	// EXTENDED_STARTUPINFO_PRESENT wires up the pseudoconsole attribute;
-	// CREATE_UNICODE_ENVIRONMENT tells CreateProcess our env block is
-	// UTF-16. CREATE_NO_WINDOW/DETACHED_PROCESS/CREATE_NEW_CONSOLE are
-	// deliberately absent — see doc comment above.
-	err = windows.CreateProcess(
+	err := windows.CreateProcess(
 		nil, cmdLine, nil, nil, false,
 		windows.EXTENDED_STARTUPINFO_PRESENT|windows.CREATE_UNICODE_ENVIRONMENT,
 		envBlock, dirPtr, &si.StartupInfo, pi,
 	)
 	if err != nil {
-		windows.ClosePseudoConsole(hpc)
-		_ = windows.CloseHandle(ptyInWrite)
-		_ = windows.CloseHandle(ptyOutRead)
 		return nil, fmt.Errorf("CreateProcess: %w", err)
 	}
-	_ = windows.CloseHandle(pi.Thread)
+	return pi, nil
+}
 
-	// Job Object: closing it kills every descendant the shell spawned,
-	// not just the shell itself. Without this, backgrounded child
-	// processes can outlive tab close (a real gap in some ConPTY
-	// wrappers that only TerminateProcess the direct child).
+func assignKillOnCloseJob(proc windows.Handle) windows.Handle {
 	job, jerr := windows.CreateJobObject(nil, nil)
-	if jerr == nil {
-		info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{
-			BasicLimitInformation: windows.JOBOBJECT_BASIC_LIMIT_INFORMATION{
-				LimitFlags: windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-			},
-		}
-		_, _ = windows.SetInformationJobObject(
-			job, windows.JobObjectExtendedLimitInformation,
-			uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info)),
-		)
-		_ = windows.AssignProcessToJobObject(job, pi.Process)
+	if jerr != nil {
+		return 0
 	}
-
-	return &conPTY{
-		hpc:     hpc,
-		job:     job,
-		pipeIn:  ptyInWrite,
-		pipeOut: ptyOutRead,
-		proc:    pi.Process,
-		pid:     pi.ProcessId,
-		closed:  make(chan struct{}),
-	}, nil
+	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{
+		BasicLimitInformation: windows.JOBOBJECT_BASIC_LIMIT_INFORMATION{
+			LimitFlags: windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+		},
+	}
+	_, _ = windows.SetInformationJobObject(
+		job, windows.JobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info)),
+	)
+	_ = windows.AssignProcessToJobObject(job, proc)
+	return job
 }
 
 func (p *conPTY) Write(b []byte) (int, error) {

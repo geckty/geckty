@@ -7,6 +7,11 @@ import (
 	"github.com/tetratelabs/wazero/api"
 )
 
+const (
+	hostExportLog       = "log"
+	hostExportStatusbar = "statusbar_draw"
+)
+
 // registerHostFunctions declares the "geckty" namespace's host functions.
 // The project plan's "Core seams" names a fuller eventual set (grid_cell,
 // grid_size, register_osc_handler, statusbar_draw, config_get, log); M9
@@ -34,7 +39,7 @@ func (h *Host) registerHostFunctions(ctx context.Context) error {
 	builder.NewFunctionBuilder().
 		WithFunc(func(ctx context.Context, mod api.Module, ptr, length uint32) {
 			p := h.callerOf(mod)
-			if p == nil || !p.hasPermission("log") {
+			if p == nil || !p.hasPermission(PermissionLog) {
 				return
 			}
 			msg, ok := readGuestString(mod, ptr, length)
@@ -44,12 +49,12 @@ func (h *Host) registerHostFunctions(ctx context.Context) error {
 			slog.InfoContext(ctx, msg, "plugin", p.Name)
 		}).
 		WithParameterNames("ptr", "length").
-		Export("log")
+		Export(hostExportLog)
 
 	builder.NewFunctionBuilder().
 		WithFunc(func(_ context.Context, mod api.Module, ptr, length uint32) {
 			p := h.callerOf(mod)
-			if p == nil || !p.hasPermission("statusbar") {
+			if p == nil || !p.hasPermission(PermissionStatusbar) {
 				return
 			}
 			text, ok := readGuestString(mod, ptr, length)
@@ -61,7 +66,7 @@ func (h *Host) registerHostFunctions(ctx context.Context) error {
 			p.statusMu.Unlock()
 		}).
 		WithParameterNames("ptr", "length").
-		Export("statusbar_draw")
+		Export(hostExportStatusbar)
 
 	_, err := builder.Instantiate(ctx)
 	return err

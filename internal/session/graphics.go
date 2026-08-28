@@ -66,13 +66,22 @@ func newGraphics(s *Session) *graphics {
 // Kitty-graphics commands, writes back any protocol response, and records
 // completed placements.
 func (s *Session) handleAPC(payload []byte) {
-	resp, placement := s.gfx.decoder.Feed(payload)
-	if resp != nil {
-		_, _ = s.Write(resp)
+	result := s.gfx.decoder.Feed(payload)
+	if result.Resp != nil {
+		_, _ = s.Write(result.Resp)
 	}
-	if placement == nil {
+	if result.DeleteAll {
+		s.clearPlacements()
 		return
 	}
+	if result.DeleteID != 0 {
+		s.deletePlacementID(result.DeleteID)
+		return
+	}
+	if result.Placement == nil {
+		return
+	}
+	placement := result.Placement
 
 	s.Term.RLock()
 	cursor := s.Term.Cursor()
@@ -97,6 +106,19 @@ func (s *Session) handleAPC(payload []byte) {
 	// second call here would just double-fire it for every decoded
 	// placement (see the identical fix applied to osc52Bridge.OSC52Write
 	// for the same reason).
+}
+
+// deletePlacementID drops placements whose Kitty image id matches id.
+func (s *Session) deletePlacementID(id uint32) {
+	s.gfx.mu.Lock()
+	defer s.gfx.mu.Unlock()
+	kept := s.gfx.placements[:0]
+	for _, p := range s.gfx.placements {
+		if p.ID != id {
+			kept = append(kept, p)
+		}
+	}
+	s.gfx.placements = kept
 }
 
 // Placements returns a snapshot of the session's currently decoded

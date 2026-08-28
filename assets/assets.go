@@ -32,3 +32,11 @@ var Icon []byte
 //
 //go:embed fonts
 var Fonts embed.FS
+
+// Themes holds shipped theme TOML files (themes/<name>.toml). These are the
+// primary built-in theme source; config.Glass* and defaultUI() are populated
+// from the embedded glass file at init / load. User theme files under
+// ~/.config/geckty/themes/ take precedence when present.
+//
+//go:embed themes
+var Themes embed.FS

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/geckty/geckty/internal/vt/emu/geom"
 
@@ -59,8 +60,7 @@ func (t *State) Execute(b byte) {
 		t.newline(t.mode&ModeCRLF != 0)
 	// BEL
 	case '\a':
-		// TODO: emit sound
-		// TODO: window alert if not focused
+		t.dirty.Bell = true
 	}
 }
 
@@ -167,6 +167,8 @@ func (t *State) OscDispatch(params [][]byte, bellTerminated bool) {
 		}
 	case 52: // clipboard operations
 		t.handleOSC52(s)
+	case 8: // hyperlink (OSC 8)
+		t.handleOSC8(s)
 	case 133: // semantic prompt (FinalTerm/iTerm2 shell integration)
 		t.handleOSC133(s)
 	default:
@@ -429,6 +431,28 @@ func (t *State) EscDispatch(intermediates []byte, ignore bool, b byte) {
 		'C', // Finnish (ignored)
 		'K': // German (ignored)
 	}
+}
+
+// handleOSC8 processes OSC 8 hyperlink sequences (Kitty/VTE/iTerm2).
+//
+// Format: OSC 8 ; params ; URI ST
+//   - params: optional key=value pairs (e.g. id=foo), colon-separated
+//   - URI empty (or sequence OSC 8 ; ; ST): end the current hyperlink
+//
+// Geckty addition — upstream cy/pkg/emu logs OSC 8 as unknown. URI is
+// stored on subsequent glyphs via cur.Attr.Hyperlink until cleared.
+func (t *State) handleOSC8(s strEscape) {
+	// args[0] is "8"; params are args[1]; URI is args[2:] joined (URI may
+	// contain ';' which Split already broke apart).
+	if len(s.args) < 2 {
+		t.cur.Attr.Hyperlink = ""
+		return
+	}
+	uri := ""
+	if len(s.args) >= 3 {
+		uri = strings.Join(s.args[2:], ";")
+	}
+	t.cur.Attr.Hyperlink = uri
 }
 
 // handleOSC52 processes OSC 52 clipboard sequences. Write/query requests

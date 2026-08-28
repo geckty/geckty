@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/BurntSushi/toml"
 )
 
 func TestMergeColorsOverlaysNonEmpty(t *testing.T) {
@@ -25,7 +27,7 @@ func TestMergeColorsOverlaysNonEmpty(t *testing.T) {
 	}
 }
 
-func TestBuiltinThemeColorsAreValidHex(t *testing.T) {
+func TestEmbeddedThemeColorsAreValidHex(t *testing.T) {
 	const hexDigits = "0123456789abcdefABCDEF"
 	isHex := func(s string) bool {
 		if len(s) != 7 || s[0] != '#' {
@@ -39,7 +41,12 @@ func TestBuiltinThemeColorsAreValidHex(t *testing.T) {
 		return true
 	}
 
-	for name, c := range builtinThemes {
+	for _, name := range ListThemes("") {
+		tf, ok := loadEmbeddedTheme(name)
+		if !ok {
+			t.Fatalf("embedded theme %q missing", name)
+		}
+		c := tf.Colors
 		if !isHex(c.Foreground) {
 			t.Errorf("theme %q has an invalid Foreground %q", name, c.Foreground)
 		}
@@ -63,7 +70,7 @@ func TestLoadThemeBuiltin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want := builtinThemes["glass"]
+	want := defaultColors()
 	if cfg.Theme != "glass" {
 		t.Fatalf("Theme = %q, want glass", cfg.Theme)
 	}
@@ -87,7 +94,7 @@ func TestLoadDeprecatedPresetAlias(t *testing.T) {
 	if cfg.Colors.Preset != "" {
 		t.Fatalf("Preset should be cleared after resolve, got %q", cfg.Colors.Preset)
 	}
-	want := builtinThemes["glass"]
+	want := defaultColors()
 	if cfg.Colors.Background != want.Background {
 		t.Fatalf("Background = %q, want %q", cfg.Colors.Background, want.Background)
 	}
@@ -113,7 +120,7 @@ active_tab_background = "#ff00aa"
 	if cfg.Colors.Foreground != "#112233" {
 		t.Fatalf("Foreground = %q, want #112233", cfg.Colors.Foreground)
 	}
-	if cfg.Colors.Background != builtinThemes["glass"].Background {
+	if cfg.Colors.Background != defaultColors().Background {
 		t.Fatalf("Background should remain glass, got %q", cfg.Colors.Background)
 	}
 	if cfg.Colors.ActiveTabBackground != "#ff00aa" {
@@ -190,9 +197,12 @@ ansi = [
 }
 
 func TestDefaultUsesGlassColors(t *testing.T) {
-	want := builtinThemes["glass"]
-	if got := Default().Colors; got != want {
+	want := defaultColors()
+	if got := Default().Colors; got.Background != want.Background || got.Foreground != want.Foreground {
 		t.Fatalf("Default().Colors = %+v, want glass %+v", got, want)
+	}
+	if Default().UI.VisualBell == "" {
+		t.Fatal("Default().UI should include visual_bell")
 	}
 }
 
@@ -339,7 +349,7 @@ func TestLoadThemeColorsDirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("builtin glass: %v", err)
 	}
-	if got.Background != builtinThemes["glass"].Background {
+	if got.Background != defaultColors().Background {
 		t.Fatalf("got %+v", got)
 	}
 }
@@ -347,5 +357,196 @@ func TestLoadThemeColorsDirect(t *testing.T) {
 func TestKnownThemeNames(t *testing.T) {
 	if got := knownThemeNames(); got != "glass" {
 		t.Fatalf("knownThemeNames = %q, want glass", got)
+	}
+}
+
+func TestListThemesIncludesEmbedded(t *testing.T) {
+	names := ListThemes("")
+	found := false
+	for _, n := range names {
+		if n == "glass" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("ListThemes missing glass: %v", names)
+	}
+}
+
+func TestLoadThemeFileEmptyName(t *testing.T) {
+	if _, err := loadThemeFile("  ", ""); err == nil {
+		t.Fatal("expected error for empty theme name")
+	}
+}
+
+func TestListThemesIncludesUserThemeFile(t *testing.T) {
+	dir := t.TempDir()
+	themesDir := filepath.Join(dir, "themes")
+	if err := os.MkdirAll(themesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const name = "user-patch-theme"
+	path := filepath.Join(themesDir, name+".toml")
+	if err := os.WriteFile(path, []byte("[colors]\nforeground = \"#010101\"\nbackground = \"#020202\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(dir, "config.toml")
+	names := ListThemes(cfgPath)
+	found := false
+	for _, n := range names {
+		if n == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("ListThemes missing %q: %v", name, names)
+	}
+}
+
+func TestDefaultUIFallback(t *testing.T) {
+	ui := defaultUIFallback()
+	if ui.VisualBell == "" {
+		t.Fatal("defaultUIFallback should set VisualBell")
+	}
+	if ui.Glass.BarLift == nil || ui.Glass.FillAlpha == nil {
+		t.Fatal("defaultUIFallback should seed glass floats")
+	}
+}
+
+func TestDefaultUIMatchesEmbeddedGlass(t *testing.T) {
+	tf, ok := loadEmbeddedTheme("glass")
+	if !ok {
+		t.Fatal("embedded glass theme missing")
+	}
+	got := defaultUI()
+	want := tf.UI
+
+	if got.VisualBell != want.VisualBell {
+		t.Errorf("VisualBell = %q, want %q", got.VisualBell, want.VisualBell)
+	}
+	if got.ScrollbarTrack != want.ScrollbarTrack {
+		t.Errorf("ScrollbarTrack = %q, want %q", got.ScrollbarTrack, want.ScrollbarTrack)
+	}
+	if got.ScrollbarThumb != want.ScrollbarThumb {
+		t.Errorf("ScrollbarThumb = %q, want %q", got.ScrollbarThumb, want.ScrollbarThumb)
+	}
+	if got.ContentBrackets != want.ContentBrackets {
+		t.Errorf("ContentBrackets = %q, want %q", got.ContentBrackets, want.ContentBrackets)
+	}
+	if got.CommandBorderEnabled == nil || want.CommandBorderEnabled == nil {
+		t.Fatalf("CommandBorderEnabled nil: got %v want %v", got.CommandBorderEnabled, want.CommandBorderEnabled)
+	}
+	if *got.CommandBorderEnabled != *want.CommandBorderEnabled {
+		t.Errorf("CommandBorderEnabled = %v, want %v", *got.CommandBorderEnabled, *want.CommandBorderEnabled)
+	}
+	if got.CommandDotEnabled == nil || want.CommandDotEnabled == nil {
+		t.Fatalf("CommandDotEnabled nil: got %v want %v", got.CommandDotEnabled, want.CommandDotEnabled)
+	}
+	if *got.CommandDotEnabled != *want.CommandDotEnabled {
+		t.Errorf("CommandDotEnabled = %v, want %v", *got.CommandDotEnabled, *want.CommandDotEnabled)
+	}
+
+	assertGlassFloatEqual := func(name string, got, want *float64) {
+		t.Helper()
+		if got == nil || want == nil {
+			t.Fatalf("Glass.%s nil: got %v want %v", name, got, want)
+		}
+		if *got != *want {
+			t.Errorf("Glass.%s = %v, want %v", name, *got, *want)
+		}
+	}
+	assertGlassFloatEqual("BarLift", got.Glass.BarLift, want.Glass.BarLift)
+	assertGlassFloatEqual("Inactive", got.Glass.Inactive, want.Glass.Inactive)
+	assertGlassFloatEqual("Hover", got.Glass.Hover, want.Glass.Hover)
+	assertGlassFloatEqual("Active", got.Glass.Active, want.Glass.Active)
+	assertGlassFloatEqual("Drag", got.Glass.Drag, want.Glass.Drag)
+	assertGlassFloatEqual("PlusHover", got.Glass.PlusHover, want.Glass.PlusHover)
+	assertGlassFloatEqual("Rim", got.Glass.Rim, want.Glass.Rim)
+	assertGlassFloatEqual("RimAlpha", got.Glass.RimAlpha, want.Glass.RimAlpha)
+	assertGlassFloatEqual("FillAlpha", got.Glass.FillAlpha, want.Glass.FillAlpha)
+}
+
+func TestGlassVarsMatchEmbedded(t *testing.T) {
+	tf, ok := loadEmbeddedTheme(ThemeGlass)
+	if !ok {
+		t.Fatal("embedded glass theme missing")
+	}
+	g := tf.UI.Glass
+	check := func(name string, got float64, ptr *float64) {
+		t.Helper()
+		if ptr == nil {
+			t.Fatalf("%s: embedded pointer nil", name)
+		}
+		if got != *ptr {
+			t.Errorf("%s = %v, want embedded %v", name, got, *ptr)
+		}
+	}
+	check("BarLift", GlassBarLift, g.BarLift)
+	check("Inactive", GlassInactive, g.Inactive)
+	check("Hover", GlassHover, g.Hover)
+	check("Active", GlassActive, g.Active)
+	check("Drag", GlassDrag, g.Drag)
+	check("PlusHover", GlassPlusHover, g.PlusHover)
+	check("Rim", GlassRim, g.Rim)
+	check("RimAlpha", GlassRimAlpha, g.RimAlpha)
+	check("FillAlpha", GlassFillAlpha, g.FillAlpha)
+}
+
+func TestLoadThemeUISection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("theme = \"glass\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.UI.VisualBell != "#ffffff55" {
+		t.Fatalf("UI.VisualBell = %q", cfg.UI.VisualBell)
+	}
+	if cfg.UI.CommandBorderEnabled == nil || *cfg.UI.CommandBorderEnabled {
+		t.Fatal("command_border_enabled should default false")
+	}
+	if cfg.UI.CommandDotEnabled == nil || *cfg.UI.CommandDotEnabled {
+		t.Fatal("command_dot_enabled should default false")
+	}
+	if cfg.UI.Glass.PlusHover == nil || *cfg.UI.Glass.PlusHover != 0.08 {
+		t.Fatalf("Glass.PlusHover = %v", cfg.UI.Glass.PlusHover)
+	}
+	if cfg.UI.Glass.Rim == nil || *cfg.UI.Glass.Rim != 0.70 {
+		t.Fatalf("Glass.Rim = %v", cfg.UI.Glass.Rim)
+	}
+	if cfg.UI.Glass.FillAlpha == nil || *cfg.UI.Glass.FillAlpha != 0.78 {
+		t.Fatalf("Glass.FillAlpha = %v", cfg.UI.Glass.FillAlpha)
+	}
+}
+
+func TestUIOverridesFromHonorsDefinedKeys(t *testing.T) {
+	const raw = `
+[ui]
+visual_bell = "#aabbccdd"
+command_border_enabled = true
+content_brackets = ""
+[ui.glass]
+drag = 0.25
+`
+	var decoded Config
+	md, err := toml.Decode(raw, &decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	over := uiOverridesFrom(md, decoded.UI)
+	if over.VisualBell != "#aabbccdd" {
+		t.Fatalf("VisualBell = %q", over.VisualBell)
+	}
+	if over.CommandBorderEnabled == nil || !*over.CommandBorderEnabled {
+		t.Fatal("expected command_border_enabled override")
+	}
+	if over.ContentBrackets != ContentBracketsOff {
+		t.Fatalf("ContentBrackets = %q, want off sentinel", over.ContentBrackets)
+	}
+	if over.Glass.Drag == nil || *over.Glass.Drag != 0.25 {
+		t.Fatalf("Glass.Drag = %v", over.Glass.Drag)
 	}
 }
