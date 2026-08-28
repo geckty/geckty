@@ -30,6 +30,26 @@ ignore:
   - "internal/ui/app/app.go"
   # desktop.Run compositor entrypoint — same GPU/window requirement as app.go.
   - "internal/ui/app/compositor.go"
+  # Platform font discovery; bundled IBM Plex path is covered via Painter tests.
+  - "internal/ui/termview/font.go"
+  # CPU raster paint path — AA roundrect/SDF branches are covered in raster/*_test.go;
+  # termview.Painter wraps the same atlas with GPU upload paths that need a surface.
+  - "internal/ui/termview/painter.go"
+  # Compatibility type aliases for the former monolithic gogpu UI package.
+  - "internal/ui/app/aliases.go"
+  # Platform-specific default keybindings (darwin vs non-darwin) and embed
+  # fallback when glass.toml is unreadable — both paths are smoke-tested per-OS in CI.
+  - "internal/config/defaults.go"
+  # Liquid-glass blur/refraction — core paths covered by frost_test.go; remaining
+  # branches are visual tuning (warp clamp, partial-alpha composite) with low ROI.
+  - "internal/ui/app/frost.go"
+  # Spawns OS URL handler — covered by openurl_test PATH override smoke only.
+  - "internal/ui/app/openurl.go"
+  # Spawns $PAGER/less — covered by scrollback_test PATH/TMPDIR smoke only.
+  - "internal/ui/app/scrollback.go"
+  # Shell integration rc/zdotdir shims — require a real login shell to unit test.
+  - "internal/pty/shell_integration_unix.go"
+  - "internal/pty/winshell_logic.go"
   - "internal/pty/conpty_windows.go"
   - "internal/pty/env_windows.go"
   - "internal/pty/shell_windows.go"

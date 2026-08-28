@@ -116,3 +116,51 @@ func TestRoundRectCoverageBeyondCornerRadiusIsZero(t *testing.T) {
 		t.Fatalf("coverage at extreme corner = %v, want 0", got)
 	}
 }
+
+func TestFillRoundRectInvalidGeometryIsNoop(t *testing.T) {
+	buf := newBuf(4, 4)
+	FillRoundRect(nil, 4, 0, 0, 4, 4, 2, color.RGBA{R: 0xff, A: 0xff})
+	FillRoundRect(buf, 0, 0, 0, 4, 4, 2, color.RGBA{R: 0xff, A: 0xff})
+	FillRoundRect(buf, 4, 2, 0, 2, 4, 2, color.RGBA{R: 0xff, A: 0xff})
+	for _, b := range buf {
+		if b != 0 {
+			t.Fatal("invalid geometry must not paint")
+		}
+	}
+}
+
+func TestFillRoundRectClampsRadiusToHalfSize(t *testing.T) {
+	buf := newBuf(6, 6)
+	FillRoundRect(buf, 6, 1, 1, 5, 5, 99, color.RGBA{R: 0xff, A: 0xff})
+	if got := pixelAt(buf, 6, 3, 3); got.R == 0 {
+		t.Fatal("oversized radius should clamp and still fill interior")
+	}
+}
+
+func TestFillRoundRectZeroAlphaSkipsBlend(t *testing.T) {
+	buf := newBuf(4, 4)
+	FillRoundRect(buf, 4, 0, 0, 4, 4, 2, color.RGBA{R: 0xff, A: 0})
+	for _, b := range buf {
+		if b != 0 {
+			t.Fatal("alpha=0 must not modify buffer")
+		}
+	}
+}
+
+func TestStrokeRoundRectInvalidGeometryIsNoop(t *testing.T) {
+	buf := newBuf(4, 4)
+	StrokeRoundRect(buf, 4, 3, 0, 3, 4, 1, color.RGBA{R: 0xff, A: 0xff})
+	for _, b := range buf {
+		if b != 0 {
+			t.Fatal("degenerate stroke rect must not paint")
+		}
+	}
+}
+
+func TestFillDiagonalCrossClampsToFrameBounds(t *testing.T) {
+	buf := newBuf(8, 8)
+	FillDiagonalCross(buf, 8, 1, 1, 10, 2, color.RGBA{R: 0xff, A: 0xff})
+	if got := pixelAt(buf, 8, 1, 1); got.R == 0 {
+		t.Fatal("cross near origin should still paint inside bounds")
+	}
+}

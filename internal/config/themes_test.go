@@ -373,6 +373,47 @@ func TestListThemesIncludesEmbedded(t *testing.T) {
 	}
 }
 
+func TestLoadThemeFileEmptyName(t *testing.T) {
+	if _, err := loadThemeFile("  ", ""); err == nil {
+		t.Fatal("expected error for empty theme name")
+	}
+}
+
+func TestListThemesIncludesUserThemeFile(t *testing.T) {
+	dir := t.TempDir()
+	themesDir := filepath.Join(dir, "themes")
+	if err := os.MkdirAll(themesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const name = "user-patch-theme"
+	path := filepath.Join(themesDir, name+".toml")
+	if err := os.WriteFile(path, []byte("[colors]\nforeground = \"#010101\"\nbackground = \"#020202\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(dir, "config.toml")
+	names := ListThemes(cfgPath)
+	found := false
+	for _, n := range names {
+		if n == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("ListThemes missing %q: %v", name, names)
+	}
+}
+
+func TestDefaultUIFallback(t *testing.T) {
+	ui := defaultUIFallback()
+	if ui.VisualBell == "" {
+		t.Fatal("defaultUIFallback should set VisualBell")
+	}
+	if ui.Glass.BarLift == nil || ui.Glass.FillAlpha == nil {
+		t.Fatal("defaultUIFallback should seed glass floats")
+	}
+}
+
 func TestDefaultUIMatchesEmbeddedGlass(t *testing.T) {
 	tf, ok := loadEmbeddedTheme("glass")
 	if !ok {

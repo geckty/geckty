@@ -52,3 +52,30 @@ func TestBoxBlurRGBASoftensNeighbors(t *testing.T) {
 		t.Fatalf("peak should be >= neighbor: mid=%d side=%d", mid, side)
 	}
 }
+
+func TestFrostGlassRoundRectInvalidGeometryIsNoop(_ *testing.T) {
+	buf := newBuf(8, 8)
+	frostGlassRoundRect(nil, 8, 0, 0, 4, 4, 2, 1, color.RGBA{A: 0xff})
+	frostGlassRoundRect(buf, 0, 0, 0, 4, 4, 2, 1, color.RGBA{A: 0xff})
+	frostGlassRoundRect(buf, 8, 4, 0, 4, 4, 2, 1, color.RGBA{A: 0xff})
+}
+
+func TestFrostGlassRoundRectTranslucentTint(t *testing.T) {
+	buf := newBuf(20, 20)
+	for i := range buf {
+		buf[i] = 0xff
+	}
+	frostGlassRoundRect(buf, 20, 4, 4, 16, 16, 4, 2, color.RGBA{R: 0x80, G: 0x40, B: 0x20, A: 0x80})
+	if pixelAt(buf, 20, 10, 10) == (color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}) {
+		t.Fatal("translucent frost should tint the underlay")
+	}
+}
+
+func TestBoxBlurZeroRadiusIsNoop(t *testing.T) {
+	src := []byte{1, 2, 3, 4}
+	tmp := make([]byte, len(src))
+	boxBlurRGBA(src, tmp, 1, 1, 0)
+	if src[0] != 1 {
+		t.Fatal("r<1 should leave src untouched")
+	}
+}

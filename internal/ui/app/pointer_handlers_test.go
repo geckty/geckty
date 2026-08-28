@@ -91,6 +91,74 @@ func TestHandlePointerEventInTabBarRoutesThere(t *testing.T) {
 	s.handlePointerEvent(ev) // must not panic; routed to handleTabBarPointer
 }
 
+func TestHandleTabBarPointerMoveAndRelease(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	_ = s.newTab() // ShowThreshold=2: need visible tab strip
+	down := gpucontext.PointerEvent{
+		Type: gpucontext.PointerDown, Button: gpucontext.ButtonLeft, PointerID: 3,
+	}
+	if !s.handleTabBarPointer(down, 5) {
+		t.Fatal("tab press should be consumed")
+	}
+	move := gpucontext.PointerEvent{Type: gpucontext.PointerMove, PointerID: 3, Y: 0}
+	if !s.handleTabBarPointer(move, 40) {
+		t.Fatal("drag move should be consumed while pressed")
+	}
+	up := gpucontext.PointerEvent{Type: gpucontext.PointerUp, PointerID: 3}
+	if !s.handleTabBarPointer(up, 40) {
+		t.Fatal("release should be consumed")
+	}
+}
+
+func TestHandleTabBarPointerIgnoresForeignPointerWhileDragging(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	s.tabDrag = tabDragState{pressed: true, pointer: 1}
+	ev := gpucontext.PointerEvent{Type: gpucontext.PointerMove, PointerID: 99}
+	if !s.handleTabBarPointer(ev, 10) {
+		t.Fatal("foreign pointer during drag should be swallowed")
+	}
+}
+
+func TestHandlePointerEventMiddleClickOnPane(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	app.clipboard = "middle-paste"
+	pane := s.activePaneRects[0]
+	ev := gpucontext.PointerEvent{
+		Type:    gpucontext.PointerDown,
+		X:       float64(pane.X + 12),
+		Y:       float64(pane.Y + 12),
+		Button:  gpucontext.ButtonMiddle,
+		Buttons: gpucontext.ButtonsMiddle,
+	}
+	s.handlePointerEvent(ev)
+}
+
+func TestHandlePointerEventFocusesOtherPane(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	_ = s.newTab()
+	tabs := s.mgr.Tabs()
+	s.mgr.SetFocus(tabs[0].Session)
+	tabH := s.tabBarHeightPx()
+	if tabH < 1 {
+		tabH = 28
+	}
+	first, second := tabs[0].Session, tabs[1].Session
+	s.activePaneRects = []session.PaneRect{
+		{Session: first, X: 0, Y: tabH, W: 400, H: 300},
+		{Session: second, X: 400, Y: tabH, W: 400, H: 300},
+	}
+	ev := gpucontext.PointerEvent{
+		Type:   gpucontext.PointerDown,
+		X:      450,
+		Y:      float64(tabH + 10),
+		Button: gpucontext.ButtonLeft,
+	}
+	s.handlePointerEvent(ev)
+	if s.mgr.Active() != second {
+		t.Fatal("click on second pane should focus it")
+	}
+}
+
 func TestHandlePointerEventNoActiveTabIsNoop(t *testing.T) {
 	s, _ := testUIState(t) // no tab
 	ev := gpucontext.PointerEvent{Type: gpucontext.PointerDown, X: 50, Y: 50, Button: gpucontext.ButtonLeft}
@@ -380,6 +448,72 @@ func TestUpdatePointerCursor(t *testing.T) {
 	if app.cursor != gpucontext.CursorDefault {
 		t.Fatalf("outside pane cursor = %v, want default", app.cursor)
 	}
+}
+
+func TestHandleButtonTripleClickSelectsLine(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	active.Term.Parse([]byte("line one\r\nline two\r\n"))
+	pane := s.activePaneRects[0]
+	for i := 0; i < 3; i++ {
+		s.handleButton(active, pane.X+5, pane.Y+5, pane.X, pane.Y, gpucontext.ButtonsLeft, true, 0)
+		s.handleButton(active, pane.X+5, pane.Y+5, pane.X, pane.Y, gpucontext.ButtonsLeft, false, 0)
+	}
+	if _, _, ok := active.Selection(); !ok {
+		t.Fatal("triple click should select a line")
+	}
+}
+
+func TestHandleButtonCtrlClickURL(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	active.Term.Parse([]byte("see https://example.com/x ok\r\n"))
+	pane := s.activePaneRects[0]
+	s.handleButton(active, pane.X+20, pane.Y+5, pane.X, pane.Y, gpucontext.ButtonsLeft, true, gpucontext.ModControl)
+	if app.redrawCount.Load() == 0 {
+		t.Fatal("ctrl+click on URL should redraw")
+	}
+}
+
+func TestMaybeSelectionEdgeScrollMovesViewport(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	for i := 0; i < 30; i++ {
+		active.Term.Parse([]byte("scrollback\r\n"))
+	}
+	active.StartSelection(0, 0)
+	s.cellW, s.cellH = 8, 13
+	pane := s.activePaneRects[0]
+	before := active.ScrollOffset()
+	s.maybeSelectionEdgeScroll(active, pane.Y+1, pane.Y, active.Term.Size().R)
+	if active.ScrollOffset() == before {
+		t.Fatal("pointer in top edge zone should scroll toward older history")
+	}
+}
+
+func TestHandlePointerEventPointerUpEndsSelection(t *testing.T) {
+	s, app := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	active.StartSelection(0, 0)
+	pane := s.activePaneRects[0]
+	ev := gpucontext.PointerEvent{
+		Type: gpucontext.PointerUp,
+		X:    float64(pane.X + 20),
+		Y:    float64(pane.Y + 20),
+	}
+	s.handlePointerEvent(ev)
+	if app.redrawCount.Load() == 0 {
+		t.Fatal("pointer up should redraw after ending selection")
+	}
+}
+
+func TestHandleDragWithMouseTracking(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	_, _ = active.Term.Write([]byte("\x1b[?1000h"))
+	active.StartSelection(0, 0)
+	pane := s.activePaneRects[0]
+	s.handleDrag(active, pane.X+30, pane.Y+10, pane.X, pane.Y)
 }
 
 func TestMiddleClickPastes(t *testing.T) {

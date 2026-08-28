@@ -34,3 +34,12 @@ func TestShowScrollbackInPagerDefaultLess(t *testing.T) {
 	active.Term.Parse([]byte("scrollback line\r\n"))
 	s.showScrollbackInPager()
 }
+
+func TestShowScrollbackInPagerBadTempDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("TMPDIR override is unix-specific")
+	}
+	s, _ := testUIStateWithTab(t)
+	t.Setenv("TMPDIR", "/nonexistent/geckty-tmp")
+	s.showScrollbackInPager() // CreateTemp fails — must not panic
+}

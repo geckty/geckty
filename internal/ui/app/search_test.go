@@ -106,6 +106,67 @@ func TestSearchStepFindsAndWraps(t *testing.T) {
 	s.searchStep(true) // no-op path still safe
 }
 
+func TestHandleSearchKeyCtrlNPassesThrough(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	s.openSearch()
+	if s.handleSearchKey(gpucontext.KeyN, gpucontext.ModControl) {
+		t.Fatal("Ctrl+N should pass through to shell")
+	}
+}
+
+func TestHandleSearchKeyBackspaceOnEmptyQuery(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	s.openSearch()
+	if !s.handleSearchKey(gpucontext.KeyBackspace, 0) {
+		t.Fatal("Backspace on empty query should still be consumed")
+	}
+}
+
+func TestHandleSearchTextSkipsControlChars(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	s.openSearch()
+	if !s.handleSearchText("a\x01b") {
+		t.Fatal("expected printable chars to be consumed")
+	}
+	if s.search.query != "ab" {
+		t.Fatalf("query = %q, want ab", s.search.query)
+	}
+	if s.handleSearchText("") {
+		t.Fatal("empty text should not be consumed")
+	}
+}
+
+func TestSearchRefreshWrapsFromCurrentHit(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	active.Term.Parse([]byte("one two one\r\n"))
+	s.openSearch()
+	_ = s.handleSearchText("one")
+	if s.search.count < 2 {
+		t.Fatalf("count = %d, want at least 2 matches", s.search.count)
+	}
+	first := s.search.hit
+	s.searchRefresh(false)
+	if !s.search.hasHit {
+		t.Fatal("refresh from current hit should keep a match")
+	}
+	if s.search.hit == first {
+		s.searchRefresh(false) // advance again
+	}
+}
+
+func TestSearchStepBackwardWraps(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	active.Term.Parse([]byte("aaa\r\nbbb\r\n"))
+	s.openSearch()
+	_ = s.handleSearchText("aaa")
+	s.searchStep(false)
+	if !s.search.hasHit {
+		t.Fatal("backward step should find a hit")
+	}
+}
+
 func TestPaintSearchOverlay(t *testing.T) {
 	s, _ := testUIStateWithTab(t)
 	active := s.mgr.Active()

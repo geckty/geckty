@@ -82,6 +82,29 @@ func TestHandleHintsKeySelectsAndSwallows(t *testing.T) {
 	}
 }
 
+func TestPaintHintsOverlayWithPaneOffset(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	active := s.mgr.Active()
+	active.Term.Parse([]byte("see https://example.com/x ok\r\n"))
+	s.openURLHints()
+	s.cellW, s.cellH = 8, 16
+	s.frame = make([]byte, 400*200*4)
+	s.frameW, s.frameH = 400, 200
+	s.contentOX, s.contentOY = 10, 40
+	s.activePaneRects = []session.PaneRect{{
+		Session: active, X: 10, Y: 40, W: 380, H: 140,
+	}}
+	s.paintHintsOverlay(400, 200)
+}
+
+func TestOpenURLHintsNilActiveTab(t *testing.T) {
+	s, _ := testUIState(t)
+	s.openURLHints() // mgr has no tabs
+	if s.hintsActive {
+		t.Fatal("openURLHints with no active tab should no-op")
+	}
+}
+
 func TestPaintHintsOverlay(t *testing.T) {
 	s, _ := testUIStateWithTab(t)
 	active := s.mgr.Active()
