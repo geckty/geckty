@@ -27,4 +27,3 @@ go tool pprof -top -nodecount=20 "$MEM" 2>/dev/null | head -25
 echo ""
 echo "Profiles written to $OUT/"
 echo "Interactive: go tool pprof -http=:8080 $CPU"
-echo "Live app:    GECKTY_PPROF=localhost:6060 go run ./cmd/geckty"

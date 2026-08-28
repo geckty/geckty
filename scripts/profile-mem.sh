@@ -1,20 +1,14 @@
 #!/usr/bin/env bash
-# Memory profiling helpers for geckty (gg glyph spike + leak checks).
+# Memory profiling helpers for geckty (heap from go test -memprofile).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "=== unit mem tests ==="
-go test ./internal/ui/raster/ ./internal/ui/termview/ -run 'TestGGGlyph|TestLoadFontBundleHeap|TestMemLeak|TestFontSource' -count=1 -v
+go test ./internal/ui/raster/ ./internal/ui/termview/ -run 'TestLoadFontBundleHeap|TestMemLeak|TestFontSource' -count=1 -v
 
 echo ""
-echo "=== heap profile (termview paint loop) ==="
+echo "=== heap profile (paint loop) ==="
 prof=$(mktemp)
-go test ./internal/ui/termview/ -run TestMemLeakGGGlyphPaintLoop -memprofile="$prof" -count=1
+go test ./internal/ui/termview/ -bench=BenchmarkPaintGrid80x24 -memprofile="$prof" -benchtime=1s -count=1 -run=^$
 echo "top alloc sites:"
 go tool pprof -top -nodecount=20 "$prof" 2>/dev/null | head -25
-
-echo ""
-echo "=== live app profiling ==="
-echo "Terminal 1: GECKTY_PPROF=localhost:6060 GECKTY_GG_GLYPHMASK=1 go run ./cmd/geckty"
-echo "Terminal 2: go tool pprof -http=:8080 http://localhost:6060/debug/pprof/heap"
-echo "           go tool pprof -http=:8081 http://localhost:6060/debug/pprof/allocs"

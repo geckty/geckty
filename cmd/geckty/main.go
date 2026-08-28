@@ -11,7 +11,6 @@ import (
 	"github.com/glaciforge/slogsafe"
 
 	"github.com/geckty/geckty/internal/config"
-	"github.com/geckty/geckty/internal/debug"
 	"github.com/geckty/geckty/internal/logx"
 	"github.com/geckty/geckty/internal/ui"
 	"github.com/geckty/geckty/internal/ui/app"
@@ -36,7 +35,6 @@ func main() {
 	}
 
 	log := setupLogger()
-	debug.MaybeStartPprof()
 	ctx := context.Background()
 	cfg := mustLoadConfig(ctx, log)
 	stopWatch := configureLogging(ctx, log, cfg, *logLevelFlag)
