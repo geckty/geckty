@@ -46,15 +46,15 @@ const pluginStatusInterval = time.Second
 // struct since gogpu's callback-registration API needs each handler as its
 // own function value rather than one big event loop.
 type uiState struct {
-	cfg        *config.Config
-	app        gpuApp
-	win        gpuWindow
-	keymap     *Keymap
-	thm        theme.Theme
-	painter    *Painter
-	tabBar     *TabBar
-	mgr        *session.Manager
-	newTab     func() error
+	cfg     *config.Config
+	app     gpuApp
+	win     gpuWindow
+	keymap  *Keymap
+	thm     theme.Theme
+	painter *Painter
+	tabBar  *TabBar
+	mgr     *session.Manager
+	newTab  func() error
 
 	resizeDebouncer *resizeDebouncer
 	pluginHost      *plugin.Host
@@ -74,8 +74,11 @@ type uiState struct {
 
 	// Per-window render state.
 	frame          []byte
+	frameRGBA      *image.RGBA // compositor path: view of frame for canvas.DrawImage
 	frameW, frameH int
 	tex            *gogpulib.Texture
+
+	compositor *uiCompositorBridge // set when GECKTY_UI_COMPOSITOR=1
 
 	// Font/cell metrics, refreshed in onDraw when scale or configured size
 	// changes (also covers the tab bar's own smaller font).
@@ -154,6 +157,9 @@ func (Backend) Run(cfg *config.Config) error {
 // input loop" in one call — callers should invoke it directly on the
 // main goroutine.
 func Run(cfg *config.Config) error {
+	if useUICompositor() {
+		return runWithUICompositor(cfg)
+	}
 	thm, err := buildTheme(cfg)
 	if err != nil {
 		return err
@@ -831,7 +837,6 @@ func (s *uiState) syncLiveResizeFreeze(ctx *gogpulib.Context, inLiveResize bool)
 	return true
 }
 
-
 // consumeLiveResizeSync tracks pendingTexSync across frames and reports
 // whether this frame is the one full repaint owed now that a live resize
 // just ended. Kept separate from syncLiveResizeFreeze rather than combined
@@ -948,7 +953,6 @@ func (s *uiState) paintFrame(fw, fh, tabBarH, padPx int) {
 	s.paintConfirmCloseOverlay(fw, fh, padPx)
 	s.paintVisualBell(fw, fh)
 }
-
 
 func (s *uiState) drainBells() {
 	for _, sess := range s.mgr.AllSessions() {
@@ -1172,7 +1176,6 @@ func (s *uiState) uploadAndPresent(ctx *gogpulib.Context, fw, fh int) {
 		s.app.RequestRedraw()
 	}
 }
-
 
 const chromeContentPadDp = 8
 

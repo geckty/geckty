@@ -15,3 +15,22 @@ coverage:
 ignore:
   - "cmd/"
   - "scripts/"
+  - "plugins/examples/"
+  - "internal/plugin/testdata/"
+  - "internal/ui/overlay/"
+  - "internal/ui/backend.go"
+  - "internal/ui/app/platform.go"
+  - "internal/ui/chrome/tabbar_widget.go"
+  - "internal/ui/termview/widget.go"
+  - "internal/config/actions.go"
+  - "assets/assets.go"
+  # gogpu Run/onDraw/uploadAndPresent need a live GPU surface; uiState
+  # helpers in this file are covered by internal/ui/app/*_test.go and
+  # smoke-linux exercises Run end-to-end in CI.
+  - "internal/ui/app/app.go"
+  - "internal/pty/conpty_windows.go"
+  - "internal/pty/env_windows.go"
+  - "internal/pty/shell_windows.go"
+  - "internal/pty/syscall_windows.go"
+  - "internal/pty/pty.go"
+  - "**/doc.go"

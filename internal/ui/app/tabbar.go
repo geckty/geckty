@@ -20,14 +20,14 @@ import (
 // by the caller (app.go) via dpToPx before reaching chrome.ComputeGeometry,
 // which is pure-Go and reused unchanged from the old chrome package.
 const (
-	TabBarHeightDp   = chrome.Height        // total tab strip height
-	MinTabWidthDp    = chrome.MinTabWidth   // narrowest a tab pill may shrink to before tabs scroll instead
-	PlusWidthDp      = chrome.PlusWidth     // "+" button's reserved slot width
+	TabBarHeightDp   = chrome.Height         // total tab strip height
+	MinTabWidthDp    = chrome.MinTabWidth    // narrowest a tab pill may shrink to before tabs scroll instead
+	PlusWidthDp      = chrome.PlusWidth      // "+" button's reserved slot width
 	CloseZoneWidthDp = chrome.CloseZoneWidth // hit-zone width for a tab's close ×, from its left edge
-	CloseEdgePadDp   = 8  // gap between a tab's left edge and its close-zone
-	tabInsetDp       = 10 // horizontal gap between a tab's edge and its title text
-	capsuleVPadDp    = 4  // vertical gap between the bar edge and a tab pill's rounded rect
-	capsuleSegInDp   = 3  // horizontal gap between adjacent tab pills
+	CloseEdgePadDp   = 8                     // gap between a tab's left edge and its close-zone
+	tabInsetDp       = 10                    // horizontal gap between a tab's edge and its title text
+	capsuleVPadDp    = 4                     // vertical gap between the bar edge and a tab pill's rounded rect
+	capsuleSegInDp   = 3                     // horizontal gap between adjacent tab pills
 
 	tabTitleMaxRunes = 28 // longest title before truncateTitle elides its middle
 
@@ -38,9 +38,9 @@ const (
 	plusArmLenDp        = 5 // "+" arm half-length — 1px larger than closeArmLenDp since the "+" sits in a bigger chip and reads too small at the same size
 	plusArmThicknessDp  = 2 // "+" stroke — thicker than closeArmThicknessDp to stay balanced against the larger arm length
 
-	commandDotRadiusDp = 3 // "command running/finished" indicator dot radius, see commandIndicatorColor
-	glassDragBlurDp    = 3 // liquid-glass blur under a dragged tab pill
-	tabSepHeightFrac   = 0.40 // vertical stick height as fraction of barH
+	commandDotRadiusDp = 3           // "command running/finished" indicator dot radius, see commandIndicatorColor
+	glassDragBlurDp    = 3           // liquid-glass blur under a dragged tab pill
+	tabSepHeightFrac   = 0.40        // vertical stick height as fraction of barH
 	tabSepAlpha        = uint8(0x38) // faint divider between non-pill tabs
 )
 

@@ -55,6 +55,12 @@ assets/
 
 ## Render path
 
+**Default (legacy):** CPU raster → `NewTextureFromRGBA` / `PresentTexture` on each dirty frame.
+
+**Opt-in compositor (`GECKTY_UI_COMPOSITOR=1`):** same CPU `paintFrame`, but the RGBA buffer is
+drawn via `gogpu/ui` `desktop.Run` + root `RepaintBoundary` + `canvas.DrawImage`. See
+[rendering-migration.md](rendering-migration.md) for the phased migration plan.
+
 ```mermaid
 sequenceDiagram
   participant PTY as session/PTY
@@ -86,5 +92,6 @@ is a documentation/edit copy of the same file.
 ## Related docs
 
 - [configuration.md](configuration.md) — user-facing config
+- [rendering-migration.md](rendering-migration.md) — compositor migration plan
 - [roadmap.md](roadmap.md) — UX polish backlog
 - [tech-debt.md](tech-debt.md) — deferred Kitty parity

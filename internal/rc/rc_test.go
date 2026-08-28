@@ -1,8 +1,11 @@
 package rc
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -211,6 +214,39 @@ func TestDialAndSendMissingSocket(t *testing.T) {
 	}
 	if _, err := DialAndSend(path, "list_tabs"); err == nil {
 		t.Fatal("expected dial error")
+	}
+}
+
+func TestWindowsListenAddr(t *testing.T) {
+	if got := windowsListenAddr("127.0.0.1:9"); got != "127.0.0.1:9" {
+		t.Fatalf("host:port = %q", got)
+	}
+	if got := windowsListenAddr(":1234"); got != ":1234" {
+		t.Fatalf("port only = %q", got)
+	}
+}
+
+func TestServeConnSkipsBlankLines(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- serveConn(server, &fakeHost{tabs: []string{"a"}})
+	}()
+
+	_, _ = io.WriteString(client, "\n  list_tabs  \n")
+	sc := bufio.NewScanner(client)
+	if !sc.Scan() {
+		t.Fatal("expected response")
+	}
+	if sc.Text() != "OK a" {
+		t.Fatalf("resp = %q", sc.Text())
+	}
+	_ = client.Close()
+	if err := <-done; err != nil {
+		t.Fatalf("serveConn: %v", err)
 	}
 }
 

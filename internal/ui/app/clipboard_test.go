@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"runtime"
 	"testing"
 )
 
@@ -54,4 +55,33 @@ func TestClipboardReadPropagatesErrors(t *testing.T) {
 	_ = got
 	_ = err
 	t.Log("clipboardRead completed without panic")
+}
+
+func TestClipboardWriteUsesAppWhenNativeUnavailable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("clip is always available on Windows CI")
+	}
+	t.Setenv("PATH", t.TempDir())
+	stub := &stubClipboard{}
+	if err := clipboardWrite(stub, "hello"); err != nil {
+		t.Fatalf("clipboardWrite: %v", err)
+	}
+	if len(stub.writes) != 1 || stub.writes[0] != "hello" {
+		t.Fatalf("writes = %v", stub.writes)
+	}
+}
+
+func TestClipboardReadUsesAppWhenNativeUnavailable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("powershell clipboard is always available on Windows CI")
+	}
+	t.Setenv("PATH", t.TempDir())
+	stub := &stubClipboard{text: "from-app"}
+	got, err := clipboardRead(stub)
+	if err != nil {
+		t.Fatalf("clipboardRead: %v", err)
+	}
+	if got != "from-app" {
+		t.Fatalf("got %q, want from-app", got)
+	}
 }

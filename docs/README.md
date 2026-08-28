@@ -6,6 +6,7 @@ Status: early MVP — usable daily-driver features land first; Kitty kitten pari
 | Doc | Audience | What it covers |
 |-----|----------|----------------|
 | [architecture.md](architecture.md) | Contributors | Packages, dependency rules, render path, themes |
+| [rendering-migration.md](rendering-migration.md) | Contributors | gogpu/ui compositor migration (phases, RFCs) |
 | [configuration.md](configuration.md) | Users | Config path, fonts, colors, keybindings, themes |
 | [remote-control.md](remote-control.md) | Users | `GECKTY_SOCKET` / `geckty @` |
 | [plugins.md](plugins.md) | Plugin authors | WASM plugins (wazero / wasip1) |

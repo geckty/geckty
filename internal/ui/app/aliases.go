@@ -22,7 +22,7 @@ type (
 	// Selection is an alias for termview.Selection.
 	Selection = termview.Selection
 	// Placement is an alias for termview.Placement.
-	Placement = termview.Placement
+	Placement  = termview.Placement
 	fontBundle = termview.FontBundle
 )
 

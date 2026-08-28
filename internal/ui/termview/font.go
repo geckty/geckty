@@ -352,12 +352,6 @@ func collectionSubfamilyScore(sub string, want []string, style fontStyle) int {
 	return 0
 }
 
-// openBestFace tries each candidate in order, returning the first that
-// parses successfully.
-func openBestFace(candidates [][]byte, size, dpi float64) font.Face {
-	return openBestFaceStyle(candidates, size, dpi, styleRegular)
-}
-
 func openBestFaceStyle(candidates [][]byte, size, dpi float64, style fontStyle) font.Face {
 	for _, data := range candidates {
 		if f, err := openFaceStyle(data, size, dpi, style); err == nil && f != nil {

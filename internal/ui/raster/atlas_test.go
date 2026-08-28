@@ -48,3 +48,20 @@ func TestGlyphAtlasGetCachesEntry(t *testing.T) {
 		t.Fatal("second Get('A') should return the identical cached mask, not re-rasterize")
 	}
 }
+
+func TestEmboldenedGlyphAtlasFattensMask(t *testing.T) {
+	ascent := basicfont.Face7x13.Metrics().Ascent.Ceil()
+	plain := NewGlyphAtlas(basicfont.Face7x13, ascent)
+	bold := NewEmboldenedGlyphAtlas(basicfont.Face7x13, ascent)
+	ePlain, ok := plain.Get('M')
+	if !ok {
+		t.Fatal("plain atlas Get('M')")
+	}
+	eBold, ok := bold.Get('M')
+	if !ok {
+		t.Fatal("emboldened atlas Get('M')")
+	}
+	if ePlain.Mask == eBold.Mask {
+		t.Fatal("emboldened atlas should produce a different mask than plain")
+	}
+}

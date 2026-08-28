@@ -74,3 +74,44 @@ func TestBlitImageScaledZeroSizeIsNoop(t *testing.T) {
 		}
 	}
 }
+
+func TestFillRectFillsRegion(t *testing.T) {
+	buf := newBuf(4, 4)
+	c := color.RGBA{R: 1, G: 2, B: 3, A: 255}
+	FillRect(buf, 4, 1, 1, 3, 3, c)
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 4; x++ {
+			inside := x >= 1 && x < 3 && y >= 1 && y < 3
+			got := pixelAt(buf, 4, x, y)
+			if inside && got != c {
+				t.Fatalf("(%d,%d) = %v, want %v", x, y, got, c)
+			}
+			if !inside && got != (color.RGBA{}) {
+				t.Fatalf("(%d,%d) = %v, want zero outside rect", x, y, got)
+			}
+		}
+	}
+}
+
+func TestBlendRectTranslucent(t *testing.T) {
+	buf := newBuf(2, 2)
+	FillRect(buf, 2, 0, 0, 2, 2, color.RGBA{R: 0, G: 0, B: 0, A: 255})
+	BlendRect(buf, 2, 0, 0, 1, 1, color.RGBA{R: 255, G: 0, B: 0, A: 128})
+	got := pixelAt(buf, 2, 0, 0)
+	if got.R == 0 || got.R == 255 {
+		t.Fatalf("expected blended red, got %v", got)
+	}
+}
+
+func TestBlitGlyphClippedDrawsForeground(t *testing.T) {
+	buf := newBuf(4, 4)
+	mask := image.NewAlpha(image.Rect(0, 0, 2, 2))
+	mask.SetAlpha(0, 0, color.Alpha{A: 255})
+	dr := image.Rect(1, 1, 3, 3)
+	fg := color.RGBA{R: 10, G: 20, B: 30, A: 255}
+	BlitGlyphClipped(buf, 4, 4, dr, mask, image.Point{}, fg, 0, 0, 4, 4)
+	got := pixelAt(buf, 4, 1, 1)
+	if got.R != 10 || got.G != 20 || got.B != 30 {
+		t.Fatalf("glyph pixel = %v", got)
+	}
+}

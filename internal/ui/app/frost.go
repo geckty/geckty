@@ -79,8 +79,8 @@ func compositeFrostRoundRect(buf []byte, frameW, frameH int, blurred []byte, sw,
 			if cov <= 0 {
 				continue
 			}
-			nx := (float64(x)+0.5 - cx) / hw
-			ny := (float64(y)+0.5 - cy) / hh
+			nx := (float64(x) + 0.5 - cx) / hw
+			ny := (float64(y) + 0.5 - cy) / hh
 			warp := 1.8 * (1 - (nx*nx+ny*ny)*0.35)
 			if warp < 0.4 {
 				warp = 0.4

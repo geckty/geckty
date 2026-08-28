@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/BurntSushi/toml"
 )
 
 func TestMergeColorsOverlaysNonEmpty(t *testing.T) {
@@ -476,5 +478,34 @@ func TestLoadThemeUISection(t *testing.T) {
 	}
 	if cfg.UI.Glass.FillAlpha == nil || *cfg.UI.Glass.FillAlpha != 0.78 {
 		t.Fatalf("Glass.FillAlpha = %v", cfg.UI.Glass.FillAlpha)
+	}
+}
+
+func TestUIOverridesFromHonorsDefinedKeys(t *testing.T) {
+	const raw = `
+[ui]
+visual_bell = "#aabbccdd"
+command_border_enabled = true
+content_brackets = ""
+[ui.glass]
+drag = 0.25
+`
+	var decoded Config
+	md, err := toml.Decode(raw, &decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	over := uiOverridesFrom(md, decoded.UI)
+	if over.VisualBell != "#aabbccdd" {
+		t.Fatalf("VisualBell = %q", over.VisualBell)
+	}
+	if over.CommandBorderEnabled == nil || !*over.CommandBorderEnabled {
+		t.Fatal("expected command_border_enabled override")
+	}
+	if over.ContentBrackets != ContentBracketsOff {
+		t.Fatalf("ContentBrackets = %q, want off sentinel", over.ContentBrackets)
+	}
+	if over.Glass.Drag == nil || *over.Glass.Drag != 0.25 {
+		t.Fatalf("Glass.Drag = %v", over.Glass.Drag)
 	}
 }

@@ -20,8 +20,8 @@ type Config struct {
 	// under the geckty config dir) or a built-in theme of the same name,
 	// then merges any inline [colors] keys on top — Kitty-style include +
 	// override, not an all-or-nothing preset.
-	Theme       string           `toml:"theme"`
-	Colors      ColorsConfig     `toml:"colors"`
+	Theme  string       `toml:"theme"`
+	Colors ColorsConfig `toml:"colors"`
 	// UI holds [ui] chrome tokens (bell, scrollbar, indicators, glass
 	// blends). Resolved like Colors: defaults ← theme file ← inline.
 	UI          UIConfig         `toml:"ui"`

@@ -70,7 +70,7 @@ func init() {
 
 // namedKeyBindings maps config-file key names to gpucontext.Key values for
 // the keys that aren't a single letter/digit/punctuation character.
-var namedKeyBindings KeyNameTable = KeyNameTable{
+var namedKeyBindings = KeyNameTable{
 	"Tab":       gpucontext.KeyTab,
 	"Return":    gpucontext.KeyEnter,
 	"Enter":     gpucontext.KeyEnter,
@@ -94,7 +94,7 @@ var namedKeyBindings KeyNameTable = KeyNameTable{
 // codes) rather than the localized character a layout produces — unlike
 // a layout-normalized character name, this means a Cmd+C shortcut
 // resolves to the same gpucontext.KeyC on any keyboard layout.
-var SingleCharBindings KeyNameTable = KeyNameTable{
+var SingleCharBindings = KeyNameTable{
 	"A": gpucontext.KeyA, "B": gpucontext.KeyB, "C": gpucontext.KeyC, "D": gpucontext.KeyD,
 	"E": gpucontext.KeyE, "F": gpucontext.KeyF, "G": gpucontext.KeyG, "H": gpucontext.KeyH,
 	"I": gpucontext.KeyI, "J": gpucontext.KeyJ, "K": gpucontext.KeyK, "L": gpucontext.KeyL,
@@ -112,7 +112,7 @@ var SingleCharBindings KeyNameTable = KeyNameTable{
 	"\\": gpucontext.KeyBackslash, "`": gpucontext.KeyGrave,
 }
 
-var modBindings ModNameTable = ModNameTable{
+var modBindings = ModNameTable{
 	config.ModCtrl:  gpucontext.ModControl,
 	config.ModShift: gpucontext.ModShift,
 	config.ModAlt:   gpucontext.ModAlt,

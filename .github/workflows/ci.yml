@@ -103,8 +103,9 @@ jobs:
       - run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcursor-dev libxfixes-dev libwayland-dev libgles2-mesa-dev libegl1-mesa-dev libvulkan-dev
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
+          version: v2.13.2
           args: --timeout=5m
 
   formatting:

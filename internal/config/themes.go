@@ -202,7 +202,10 @@ func ListThemes(configPath string) []string {
 		}
 	}
 	_ = fs.WalkDir(assets.Themes, "themes", func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
 			return nil
 		}
 		base := filepath.Base(path)
@@ -227,4 +230,3 @@ func ansiNonEmpty(ansi [16]string) bool {
 	}
 	return false
 }
-
