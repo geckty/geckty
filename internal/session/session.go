@@ -185,11 +185,9 @@ func (s *Session) Run() {
 
 // ScrollBy adjusts the scrollback offset by delta lines (positive scrolls
 // back into history, negative scrolls toward the live bottom), clamped to
-// [0, len(history)]. It returns the resulting offset.
+// [0, maxScrollOffset]. It returns the resulting offset.
 func (s *Session) ScrollBy(delta int) int {
-	s.Term.RLock()
-	maxOffset := len(s.Term.History())
-	s.Term.RUnlock()
+	maxOffset := s.maxScrollOffset()
 
 	s.scrollMu.Lock()
 	defer s.scrollMu.Unlock()
@@ -201,6 +199,21 @@ func (s *Session) ScrollBy(delta int) int {
 		s.scrollLines = maxOffset
 	}
 	return s.scrollLines
+}
+
+// maxScrollOffset is the largest scrollback offset where the viewport still
+// shows real content — scrolling further would repeat or expose empty rows.
+func (s *Session) maxScrollOffset() int {
+	s.Term.RLock()
+	defer s.Term.RUnlock()
+	history := len(s.Term.History())
+	screen := len(s.Term.Screen())
+	rows := s.Term.Size().R
+	total := history + screen
+	if rows <= 0 || total <= rows {
+		return 0
+	}
+	return total - rows
 }
 
 // ScrollOffset returns the current scrollback offset (0 = live/bottom).

@@ -82,10 +82,14 @@ type uiState struct {
 
 	// Font/cell metrics, refreshed in onDraw when scale or configured size
 	// changes (also covers the tab bar's own smaller font).
-	scale             float64
-	fontSizeCurrent   float64
-	fontZoomDelta     float64 // runtime pt offset from cfg.Font.Size (Cmd/Ctrl+/-)
-	cellW, cellH, asc int
+	scale              float64
+	fontSizeCurrent    float64
+	fontZoomDelta      float64 // runtime pt offset from cfg.Font.Size (Cmd/Ctrl+/-)
+	fontZoomResizeCols int     // >0: resize window on next frame to keep this grid
+	fontZoomResizeRows int
+	fontZoomPendingDIPW int    // staged logical size; applied from OnUpdate (main thread)
+	fontZoomPendingDIPH int
+	cellW, cellH, asc  int
 
 	// Tab-bar interaction state.
 	tabDrag         tabDragState
@@ -188,6 +192,7 @@ func Run(cfg *config.Config) error {
 	defer stopConfigReload()
 
 	s.wireLifecycleCallbacks(gapp)
+	s.wireFontZoomResize(gapp)
 	s.wireEventSource(gapp)
 
 	stopRC := s.wireRemoteControl()
@@ -766,8 +771,9 @@ const (
 )
 
 // adjustFontZoom changes the live font size by deltaPt (0 resets to the
-// configured size). Forces ensureFonts to rebuild on the next frame and
-// re-measures the grid so the PTY learns the new cols/rows.
+// configured size). Forces ensureFonts to rebuild on the next frame,
+// resizes the window to keep the current cols×rows grid (Kitty-style), and
+// re-clamps scrollback offsets so the viewport cannot drift into empty rows.
 func (s *uiState) adjustFontZoom(deltaPt float64) {
 	base := float64(s.cfg.Font.Size)
 	if base <= 0 {
@@ -785,8 +791,93 @@ func (s *uiState) adjustFontZoom(deltaPt float64) {
 		}
 		s.fontZoomDelta = next - base
 	}
+	if s.cols > 0 && s.rows > 0 {
+		s.fontZoomResizeCols = s.cols
+		s.fontZoomResizeRows = s.rows
+	}
 	s.fontSizeCurrent = 0 // bust ensureFonts cache
+	s.clampAllSessionScroll()
 	s.app.RequestRedraw()
+}
+
+// windowSizeForGrid returns the logical (DIP) window size that fits cols×rows
+// terminal cells with the current font metrics and chrome padding.
+func windowSizeForGrid(cols, rows int, cellW, cellH int, scale float64, padDp, tabBarDp int, tabBarVisible bool) (dipW, dipH int) {
+	if scale <= 0 {
+		scale = 1
+	}
+	if cols < 1 {
+		cols = 1
+	}
+	if rows < 1 {
+		rows = 1
+	}
+	if cellW < 1 {
+		cellW = 1
+	}
+	if cellH < 1 {
+		cellH = 1
+	}
+	padPx := dpToPx(padDp, scale)
+	tabBarPx := 0
+	if tabBarVisible {
+		tabBarPx = dpToPx(tabBarDp, scale)
+	}
+	fw := cols*cellW + 2*padPx
+	fh := rows*cellH + tabBarPx + 2*padPx
+	if fw < 1 {
+		fw = 1
+	}
+	if fh < 1 {
+		fh = 1
+	}
+	return int(float64(fw)/scale + 0.5), int(float64(fh)/scale + 0.5)
+}
+
+// syncFontZoomWindowSize stages a Kitty-style window resize for the next
+// main-thread OnUpdate tick. SetSize must not run from onDraw — gogpu draws
+// on the render thread and AppKit crashes if the window is resized there.
+func (s *uiState) stageFontZoomWindowResize() {
+	cols, rows := s.fontZoomResizeCols, s.fontZoomResizeRows
+	if cols <= 0 || rows <= 0 || s.cellW <= 0 || s.cellH <= 0 {
+		return
+	}
+	s.fontZoomResizeCols, s.fontZoomResizeRows = 0, 0
+	tabBarVisible := s.tabBarShowTabs() || s.tabBarShowPlus()
+	dipW, dipH := windowSizeForGrid(cols, rows, s.cellW, s.cellH, s.scale, s.contentPadDp(), TabBarHeightDp, tabBarVisible)
+	s.fontZoomPendingDIPW, s.fontZoomPendingDIPH = dipW, dipH
+}
+
+// applyPendingFontZoomWindowResize runs on the main thread (gogpu OnUpdate)
+// and applies any DIP size staged by the last onDraw after a font zoom.
+func (s *uiState) applyPendingFontZoomWindowResize() {
+	dipW, dipH := s.fontZoomPendingDIPW, s.fontZoomPendingDIPH
+	if dipW <= 0 || dipH <= 0 {
+		return
+	}
+	s.fontZoomPendingDIPW, s.fontZoomPendingDIPH = 0, 0
+	win := s.app.PrimaryWindow()
+	if win == nil {
+		return
+	}
+	win.SetSize(dipW, dipH)
+}
+
+func (s *uiState) wireFontZoomResize(gapp gpuApp) {
+	gapp.OnUpdate(func(_ float64) {
+		s.applyPendingFontZoomWindowResize()
+	})
+}
+
+func (s *uiState) clampAllSessionScroll() {
+	if s.mgr == nil {
+		return
+	}
+	for _, sess := range s.mgr.AllSessions() {
+		if sess != nil {
+			sess.ScrollBy(0)
+		}
+	}
 }
 
 // onDraw is the gogpu FrameEvent equivalent: measure fonts/cell metrics,
@@ -819,6 +910,7 @@ func (s *uiState) onDraw(ctx *gogpulib.Context) {
 	s.triggerResizeIfNeeded(newCols, newRows, inLiveResize, needFinalSync)
 	s.drainClipboardWrites()
 	s.uploadAndPresent(ctx, fw, fh)
+	s.stageFontZoomWindowResize()
 }
 
 // syncLiveResizeFreeze implements the Windows live-resize freeze:

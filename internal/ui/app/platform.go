@@ -33,6 +33,7 @@ type gpuApp interface {
 	OnSurfaceAvailable(fn func()) *gogpulib.App
 	PrimaryWindow() *gogpulib.Window
 	EventSource() gpucontext.EventSource
+	OnUpdate(fn func(float64)) *gogpulib.App
 	ClipboardWrite(text string) error
 	ClipboardRead() (string, error)
 }

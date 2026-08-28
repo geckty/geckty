@@ -55,6 +55,8 @@ func (f *fakeApp) OnSurfaceAvailable(fn func()) *gogpulib.App {
 	return nil
 }
 
+func (f *fakeApp) OnUpdate(fn func(float64)) *gogpulib.App { return nil }
+
 // PrimaryWindow always returns nil: gpuApp's exact signature ties this to
 // the concrete *gogpulib.Window type (see platform.go's doc comment on
 // why that can't be narrowed to gpuWindow), and a fake can't fabricate a

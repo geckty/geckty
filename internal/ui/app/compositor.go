@@ -59,6 +59,9 @@ func (c *compositorApp) PrimaryWindow() *gogpulib.Window { return c.inner.Primar
 func (c *compositorApp) EventSource() gpucontext.EventSource {
 	return c.inner.EventSource()
 }
+func (c *compositorApp) OnUpdate(fn func(float64)) *gogpulib.App {
+	return c.inner.OnUpdate(fn)
+}
 func (c *compositorApp) ClipboardWrite(text string) error { return c.inner.ClipboardWrite(text) }
 func (c *compositorApp) ClipboardRead() (string, error)   { return c.inner.ClipboardRead() }
 
@@ -115,6 +118,7 @@ func (s *uiState) paintForCompositor(scale float64, fw, fh int) *image.RGBA {
 	needFinalSync := s.consumeLiveResizeSync(inLiveResize)
 	s.triggerResizeIfNeeded(newCols, newRows, inLiveResize, needFinalSync)
 	s.drainClipboardWrites()
+	s.stageFontZoomWindowResize()
 
 	return s.frameRGBAView(fw, fh)
 }
@@ -177,6 +181,7 @@ func runWithUICompositor(cfg *config.Config) error {
 	defer stopConfigReload()
 
 	s.wireLifecycleCallbacksCompositor(s.app)
+	s.wireFontZoomResize(s.app)
 	s.wireEventSource(s.app)
 
 	stopRC := s.wireRemoteControl()

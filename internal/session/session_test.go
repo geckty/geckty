@@ -517,14 +517,21 @@ func TestScrollByClampsToHistoryLength(t *testing.T) {
 	}
 
 	s.Term.RLock()
-	wantMax := len(s.Term.History())
+	hist := len(s.Term.History())
+	screen := len(s.Term.Screen())
+	rows := s.Term.Size().R
+	total := hist + screen
 	s.Term.RUnlock()
-	if wantMax == 0 {
+	wantMax := total - rows
+	if wantMax < 0 {
+		wantMax = 0
+	}
+	if wantMax == 0 && hist == 0 {
 		t.Fatal("expected some history to have accumulated")
 	}
 
 	if got := s.ScrollBy(100); got != wantMax {
-		t.Fatalf("ScrollBy(100) = %d, want clamped to history length %d", got, wantMax)
+		t.Fatalf("ScrollBy(100) = %d, want clamped to %d (total=%d rows=%d)", got, wantMax, total, rows)
 	}
 	if got := s.ScrollOffset(); got != wantMax {
 		t.Fatalf("ScrollOffset() = %d, want %d", got, wantMax)
