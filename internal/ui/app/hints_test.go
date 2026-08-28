@@ -64,11 +64,14 @@ func TestHandleHintsKeySelectsAndSwallows(t *testing.T) {
 	if !s.hintsActive {
 		t.Fatal("control key must not close hints")
 	}
-	if !s.handleHintsKey(gpucontext.KeyZ, 0) {
-		t.Fatal("unmatched key should still be consumed")
+	if s.handleHintsKey(gpucontext.KeyZ, 0) {
+		t.Fatal("unmatched label key should pass through to shell")
 	}
 	if !s.hintsActive {
-		t.Fatal("unmatched key should not close")
+		t.Fatal("pass-through key must not close hints")
+	}
+	if s.handleHintsKey(gpucontext.KeyBackspace, 0) {
+		t.Fatal("Backspace should pass through to shell while hints are open")
 	}
 	// Empty URL short-circuits openURL (no external process).
 	if !s.handleHintsKey(gpucontext.Key1, 0) {

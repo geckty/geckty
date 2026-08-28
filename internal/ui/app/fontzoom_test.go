@@ -49,6 +49,28 @@ func TestDispatchFontZoomActions(t *testing.T) {
 	}
 }
 
+func TestHandleKeyPressFontZoomSwallowsTextEcho(t *testing.T) {
+	s, _ := testUIStateWithTab(t)
+	k, err := NewKeymap([]config.Keybinding{
+		{Key: "=", Mods: []string{"ctrl"}, Action: string(ActionIncreaseFontSize)},
+		{Key: "-", Mods: []string{"ctrl"}, Action: string(ActionDecreaseFontSize)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.keymap = k
+	s.handleKeyPress(gpucontext.KeyEqual, gpucontext.ModControl)
+	s.handleTextInput("=")
+	if s.fontZoomDelta != 1 {
+		t.Fatalf("fontZoomDelta = %v, want 1", s.fontZoomDelta)
+	}
+	s.handleKeyPress(gpucontext.KeyMinus, gpucontext.ModControl)
+	s.handleTextInput("-")
+	if s.fontZoomDelta != 0 {
+		t.Fatalf("fontZoomDelta after decrease = %v, want 0", s.fontZoomDelta)
+	}
+}
+
 func TestKeymapFontZoomActions(t *testing.T) {
 	k, err := NewKeymap([]config.Keybinding{
 		{Key: "=", Mods: []string{"ctrl"}, Action: string(ActionIncreaseFontSize)},

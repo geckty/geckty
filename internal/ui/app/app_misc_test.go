@@ -40,6 +40,19 @@ func TestShowScrollbackInPagerHonorsPagerEnv(t *testing.T) {
 	s.showScrollbackInPager()
 }
 
+func TestShowScrollbackInPagerPagerWithFlags(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PAGER via sh -c is unix-specific")
+	}
+	s, _ := testUIStateWithTab(t)
+	pager := filepath.Join(t.TempDir(), "pager.sh")
+	if err := os.WriteFile(pager, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PAGER", pager+" -R")
+	s.showScrollbackInPager()
+}
+
 func TestClipboardNativeHelpersMissingOnEmptyPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("powershell/clip are not PATH-gated the same way")

@@ -59,6 +59,7 @@ func testUIState(t *testing.T) (*uiState, *fakeApp) {
 func testWireCfg() *config.Config {
 	cfg := config.Default()
 	cfg.Shell.Command = testSleepCommand()
+	cfg.Shell.Integration = false // stable PTY in CI (-race); no temp zdotdir side effects
 	return cfg
 }
 

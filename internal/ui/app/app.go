@@ -593,12 +593,13 @@ func (s *uiState) setKeyEcho(text string) {
 		s.keyEcho = ""
 		return
 	}
-	// Only single printable ASCII letters/digits are useful as OS echoes
-	// of shortcuts. Escape sequences and control bytes must not stick —
-	// they never arrive as matching TextInput and used to swallow IME text.
+	// Single printable ASCII used as OS echo of a handled shortcut (letters,
+	// digits, and font-zoom punctuation). Escape sequences and multi-byte
+	// input must not stick — they never arrive as matching TextInput.
 	if len(text) == 1 {
 		c := text[0]
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+			c == '=' || c == '-' || c == '+' {
 			s.keyEcho = text
 			s.keyEchoAt = time.Now()
 			return
@@ -718,6 +719,9 @@ func (s *uiState) handleTextInput(text string) {
 	}
 	if s.handleSearchText(text) {
 		return
+	}
+	if s.hintsOverlayActive() {
+		return // hint labels are key-press only; don't duplicate via IME/text input
 	}
 	active := s.mgr.Active()
 	if active == nil {

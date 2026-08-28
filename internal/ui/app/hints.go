@@ -46,6 +46,8 @@ func (s *uiState) hintsOverlayActive() bool {
 }
 
 // handleHintsKey consumes keys while the URL-hints overlay is open.
+// Only Escape, modifier chords, and keys that match a visible hint label
+// are swallowed; everything else (Backspace, typing) reaches the shell.
 func (s *uiState) handleHintsKey(key gpucontext.Key, mods gpucontext.Modifiers) bool {
 	if !s.hintsActive {
 		return false
@@ -55,11 +57,11 @@ func (s *uiState) handleHintsKey(key gpucontext.Key, mods gpucontext.Modifiers) 
 		return true
 	}
 	if mods&(gpucontext.ModControl|gpucontext.ModSuper|gpucontext.ModAlt) != 0 {
-		return true // swallow while overlay is open
+		return true // swallow shortcuts while overlay is open
 	}
 	ch := keyToChar[key]
 	if ch == "" {
-		return true
+		return false
 	}
 	label := ch
 	if len(label) == 1 && label[0] >= 'A' && label[0] <= 'Z' {
@@ -72,7 +74,7 @@ func (s *uiState) handleHintsKey(key gpucontext.Key, mods gpucontext.Modifiers) 
 			return true
 		}
 	}
-	return true
+	return false
 }
 
 // paintHintsOverlay draws numbered/lettered labels over visible URL hits.

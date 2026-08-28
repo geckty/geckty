@@ -93,5 +93,6 @@ is a documentation/edit copy of the same file.
 
 - [configuration.md](configuration.md) — user-facing config
 - [rendering-migration.md](rendering-migration.md) — compositor migration plan
+- [memory-optimization.md](memory-optimization.md) — RSS budget vs Kitty
 - [roadmap.md](roadmap.md) — UX polish backlog
 - [tech-debt.md](tech-debt.md) — deferred Kitty parity

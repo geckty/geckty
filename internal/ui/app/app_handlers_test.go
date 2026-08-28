@@ -17,6 +17,13 @@ func testUIStateWithTab(t *testing.T) (*uiState, *fakeApp) {
 	if err := s.wireFirstTab(app); err != nil {
 		t.Fatalf("wireFirstTab: %v", err)
 	}
+	deadline := time.Now().Add(2 * time.Second)
+	for s.mgr.Active() == nil && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if s.mgr.Active() == nil {
+		t.Fatal("wireFirstTab: no active tab after spawn")
+	}
 	s.seedTestPaneLayout()
 	t.Cleanup(func() { _ = s.mgr.CloseActive() })
 	return s, app
@@ -173,7 +180,7 @@ func TestHandleTextInputWritesToActiveSession(t *testing.T) {
 	s.handleTextInput("x") // must not panic; active session receives the byte
 }
 
-func TestSetKeyEchoOnlyKeepsAlphanumeric(t *testing.T) {
+func TestSetKeyEchoKeepsShortcutPunctuation(t *testing.T) {
 	s, _ := testUIState(t)
 	s.setKeyEcho("A")
 	if s.keyEcho != "A" || s.keyEchoAt.IsZero() {
@@ -187,9 +194,17 @@ func TestSetKeyEchoOnlyKeepsAlphanumeric(t *testing.T) {
 	if s.keyEcho != "" {
 		t.Fatal("empty setKeyEcho should clear")
 	}
+	s.setKeyEcho("=")
+	if s.keyEcho != "=" {
+		t.Fatalf("font-zoom = echo = %q, want =", s.keyEcho)
+	}
+	s.setKeyEcho("-")
+	if s.keyEcho != "-" {
+		t.Fatalf("font-zoom - echo = %q, want -", s.keyEcho)
+	}
 	s.setKeyEcho("!")
 	if s.keyEcho != "" {
-		t.Fatalf("punctuation must not stick as keyEcho, got %q", s.keyEcho)
+		t.Fatalf("unlisted punctuation must not stick as keyEcho, got %q", s.keyEcho)
 	}
 }
 
