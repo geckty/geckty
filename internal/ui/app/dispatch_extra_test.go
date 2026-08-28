@@ -9,7 +9,7 @@ import (
 	"github.com/geckty/geckty/internal/config"
 )
 
-func TestOpenURLEmptyIsNoop(t *testing.T) {
+func TestOpenURLEmptyIsNoop(_ *testing.T) {
 	openURL("")
 }
 
